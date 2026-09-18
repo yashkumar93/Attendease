@@ -219,6 +219,34 @@ export default function AttendancePage() {
     setHistoryLoading(false)
   }
 
+  const handleExportThisPeriod = async () => {
+    try {
+      showToast('Preparing export... 📁')
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ periodId }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        showToast(err.error || 'Export failed', 'error')
+        return
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `attendance_${period?.date}_period_${periodId}.csv`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      a.remove()
+      showToast('Period attendance exported! 📁')
+    } catch {
+      showToast('Export failed', 'error')
+    }
+  }
+
   const filteredStudents = students.filter((s) => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
@@ -374,6 +402,16 @@ export default function AttendancePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
               </svg>
               Edit Attendance
+            </button>
+            <button
+              onClick={handleExportThisPeriod}
+              className="btn btn-secondary btn-sm flex items-center gap-1.5"
+              title="Export this period's attendance as CSV"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Export CSV
             </button>
           </div>
         ) : null}

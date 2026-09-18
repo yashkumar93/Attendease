@@ -20,6 +20,7 @@ export async function getExportData(params: {
   dateFrom?: string
   dateTo?: string
   classId?: number
+  periodId?: number
 }) {
   const supabase = await createClient()
 
@@ -29,6 +30,7 @@ export async function getExportData(params: {
       *,
       students(name, roll_number),
       periods!inner(
+        id,
         date, start_time, end_time, period_type,
         classes(class_name),
         subjects(subject_name),
@@ -36,7 +38,9 @@ export async function getExportData(params: {
       )
     `)
 
-  if (params.date) {
+  if (params.periodId) {
+    query = query.eq('periods.id', params.periodId)
+  } else if (params.date) {
     query = query.eq('periods.date', params.date)
   } else if (params.dateFrom && params.dateTo) {
     query = query.gte('periods.date', params.dateFrom).lte('periods.date', params.dateTo)

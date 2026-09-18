@@ -11,6 +11,12 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 -- ============================================================
 -- PROFILES
 -- ============================================================
+-- Users can read their own profile
+CREATE POLICY "Users can read own profile"
+  ON public.profiles FOR SELECT
+  TO authenticated
+  USING (id = auth.uid());
+
 -- Admin can read all profiles
 CREATE POLICY "Admin can read all profiles"
   ON public.profiles FOR SELECT

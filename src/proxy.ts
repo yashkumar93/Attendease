@@ -38,13 +38,33 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
+  // Helper to preserve refreshed cookies on redirect responses
+  const redirectWithCookies = (url: URL) => {
+    const redirectResponse = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie)
+    })
+    return redirectResponse
+  }
+
+  // Handle API routes: return 401 JSON instead of 307 redirect
+  if (pathname.startsWith('/api/')) {
+    if (pathname.startsWith('/api/auth')) {
+      return supabaseResponse
+    }
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    return supabaseResponse
+  }
+
   // Allow public routes
-  if (pathname === '/login' || pathname === '/' || pathname.startsWith('/_next') || pathname.startsWith('/api/auth')) {
+  if (pathname === '/login' || pathname === '/' || pathname.startsWith('/_next')) {
     // If user is logged in and trying to access login page, redirect to dashboard
     if (user && pathname === '/login') {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+      return redirectWithCookies(url)
     }
     return supabaseResponse
   }
@@ -54,7 +74,7 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('redirectTo', pathname)
-    return NextResponse.redirect(url)
+    return redirectWithCookies(url)
   }
 
   // Fetch user profile for role-based routing
@@ -68,7 +88,7 @@ export async function proxy(request: NextRequest) {
     if (!profile || profile.role !== 'admin') {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+      return redirectWithCookies(url)
     }
   }
 

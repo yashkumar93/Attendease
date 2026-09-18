@@ -21,6 +21,9 @@ export default function ExportPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [classId, setClassId] = useState<number | ''>('')
+  const [periodId, setPeriodId] = useState<number | ''>('')
+  const [availablePeriods, setAvailablePeriods] = useState<any[]>([])
+  const [periodsLoading, setPeriodsLoading] = useState(false)
 
   useEffect(() => {
     supabase.from('classes').select('*').order('id').then(({ data }) => {
@@ -28,6 +31,25 @@ export default function ExportPage() {
     })
     fetchLogs()
   }, [])
+
+  // Dynamically load periods when single date is selected
+  useEffect(() => {
+    if (scopeType === 'single_date' && date) {
+      setPeriodsLoading(true)
+      supabase
+        .from('periods')
+        .select('id, start_time, end_time, period_type, subjects(subject_name), profiles(full_name)')
+        .eq('date', date)
+        .order('start_time')
+        .then(({ data }) => {
+          setAvailablePeriods((data as any[]) || [])
+          setPeriodsLoading(false)
+        })
+    } else {
+      setPeriodId('')
+      setAvailablePeriods([])
+    }
+  }, [date, scopeType])
 
   const fetchLogs = async () => {
     setLogsLoading(true)
@@ -47,6 +69,7 @@ export default function ExportPage() {
 
       if (scopeType === 'single_date') {
         body.date = date
+        if (periodId) body.periodId = periodId
       } else {
         if (!dateFrom || !dateTo) {
           showToast('Please select both start and end dates', 'error')
@@ -77,7 +100,9 @@ export default function ExportPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `attendance_export_${Date.now()}.csv`
+      a.download = periodId
+        ? `attendance_${date}_period_${periodId}.csv`
+        : `attendance_export_${date || `${dateFrom}_to_${dateTo}`}.csv`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -96,7 +121,7 @@ export default function ExportPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Export Attendance</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Export attendance data as CSV. Google Sheets integration available when OAuth is configured.
+          Export attendance data as CSV for a single date, specific period, or date range.
         </p>
       </div>
 
@@ -121,18 +146,42 @@ export default function ExportPage() {
             </button>
           </div>
 
-          {/* Date inputs */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          {/* Date & Period inputs */}
+          <div className="flex flex-col sm:flex-row gap-4 flex-wrap items-start">
             {scopeType === 'single_date' ? (
-              <div>
-                <label className="label">Date</label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="input w-48"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="label">Date</label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="input w-48"
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Select Period</label>
+                  <select
+                    value={periodId}
+                    onChange={(e) => setPeriodId(e.target.value ? parseInt(e.target.value) : '')}
+                    disabled={periodsLoading}
+                    className="input w-64"
+                  >
+                    <option value="">All Periods (Entire Day)</option>
+                    {availablePeriods.map((p, idx) => (
+                      <option key={p.id} value={p.id}>
+                        Period {idx + 1}: {p.subjects?.subject_name} ({p.start_time?.slice(0, 5)} – {p.end_time?.slice(0, 5)})
+                      </option>
+                    ))}
+                  </select>
+                  {availablePeriods.length === 0 && !periodsLoading && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                      No periods scheduled on this date.
+                    </p>
+                  )}
+                </div>
+              </>
             ) : (
               <>
                 <div>
@@ -155,19 +204,22 @@ export default function ExportPage() {
                 </div>
               </>
             )}
-            <div>
-              <label className="label">Class (optional)</label>
-              <select
-                value={classId}
-                onChange={(e) => setClassId(e.target.value ? parseInt(e.target.value) : '')}
-                className="input w-48"
-              >
-                <option value="">All Classes</option>
-                {classes.map((c) => (
-                  <option key={c.id} value={c.id}>{c.class_name}</option>
-                ))}
-              </select>
-            </div>
+
+            {classes.length > 1 && (
+              <div>
+                <label className="label">Class (optional)</label>
+                <select
+                  value={classId}
+                  onChange={(e) => setClassId(e.target.value ? parseInt(e.target.value) : '')}
+                  className="input w-48"
+                >
+                  <option value="">All Classes</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.class_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Export button */}
