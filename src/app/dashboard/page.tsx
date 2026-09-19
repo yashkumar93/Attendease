@@ -1,12 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { ensureDailyPeriods } from '@/app/actions/auto-schedule'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) redirect('/login')
+
+  // Auto-create today's periods if they don't exist yet
+  try {
+    await ensureDailyPeriods()
+  } catch (e) {
+    console.error('Auto-schedule fallback failed:', e)
+  }
 
   const { data: profile } = await supabase
     .from('profiles')

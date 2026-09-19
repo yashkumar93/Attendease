@@ -137,12 +137,11 @@ CREATE POLICY "Admin can delete periods"
 -- ============================================================
 -- ATTENDANCE
 -- ============================================================
--- Admin can read all attendance
-CREATE POLICY "Admin can read all attendance"
+-- All authenticated users can read attendance
+CREATE POLICY "Authenticated users can read attendance"
   ON public.attendance FOR SELECT
   TO authenticated
-  USING (public.get_user_role() = 'admin');
-
+  USING (true);
 
 -- Admin can insert attendance for any period
 CREATE POLICY "Admin can insert attendance"
@@ -166,13 +165,21 @@ CREATE POLICY "Instructors can insert own period attendance"
 CREATE POLICY "Admin can update attendance"
   ON public.attendance FOR UPDATE
   TO authenticated
-  USING (public.get_user_role() = 'admin');
+  USING (public.get_user_role() = 'admin')
+  WITH CHECK (public.get_user_role() = 'admin');
 
 -- Instructors can update attendance they originally marked for their own periods
 CREATE POLICY "Instructors can update own period attendance"
   ON public.attendance FOR UPDATE
   TO authenticated
   USING (
+    EXISTS (
+      SELECT 1 FROM public.periods
+      WHERE periods.id = attendance.period_id
+      AND periods.instructor_id = auth.uid()
+    )
+  )
+  WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.periods
       WHERE periods.id = attendance.period_id

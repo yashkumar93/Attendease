@@ -41,11 +41,12 @@ export interface Period {
   id: number
   date: string
   class_id: number
-  subject_id: number
-  instructor_id: string
+  subject_id: number | null
+  instructor_id: string | null
   start_time: string
   end_time: string
   period_type: PeriodType
+  period_number: number | null
   created_by: string
   created_at: string
   updated_at: string
@@ -190,11 +191,12 @@ export interface Database {
           id?: number
           date: string
           class_id: number
-          subject_id: number
-          instructor_id: string
+          subject_id?: number | null
+          instructor_id?: string | null
           start_time: string
           end_time: string
           period_type?: string
+          period_number?: number
           created_by: string
           created_at?: string
           updated_at?: string
@@ -203,11 +205,12 @@ export interface Database {
           id?: number
           date?: string
           class_id?: number
-          subject_id?: number
-          instructor_id?: string
+          subject_id?: number | null
+          instructor_id?: string | null
           start_time?: string
           end_time?: string
           period_type?: string
+          period_number?: number
           created_by?: string
           updated_at?: string
         }

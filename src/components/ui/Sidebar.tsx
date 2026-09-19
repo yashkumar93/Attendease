@@ -92,6 +92,15 @@ const navItems: NavItem[] = [
     ),
     adminOnly: true,
   },
+  {
+    label: 'Quick Mark',
+    href: '#quick-mark',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+      </svg>
+    ),
+  },
 ]
 
 export function Sidebar() {
@@ -152,24 +161,44 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {filteredNavItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setMobileOpen(false)}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-              isActive(item.href)
-                ? 'bg-white/10 text-sidebar-text-active shadow-sm'
-                : 'text-sidebar-text hover:bg-white/5 hover:text-sidebar-text-active'
-            }`}
-          >
-            {item.icon}
-            {item.label}
-            {isActive(item.href) && (
-              <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />
-            )}
-          </Link>
-        ))}
+        {filteredNavItems.map((item) => {
+          if (item.href === '#quick-mark') {
+            return (
+              <button
+                key={item.href}
+                onClick={() => {
+                  setMobileOpen(false)
+                  window.dispatchEvent(new CustomEvent('open-quick-mark'))
+                }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 w-full text-sidebar-text hover:bg-white/5 hover:text-sidebar-text-active"
+              >
+                {item.icon}
+                {item.label}
+                <div className="ml-auto">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold">⚡</span>
+                </div>
+              </button>
+            )
+          }
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setMobileOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                isActive(item.href)
+                  ? 'bg-white/10 text-sidebar-text-active shadow-sm'
+                  : 'text-sidebar-text hover:bg-white/5 hover:text-sidebar-text-active'
+              }`}
+            >
+              {item.icon}
+              {item.label}
+              {isActive(item.href) && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />
+              )}
+            </Link>
+          )
+        })}
       </nav>
 
       {/* User profile */}
