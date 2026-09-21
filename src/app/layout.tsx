@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AttendEase — Attendance Management System",
+  title: "GEETAxNIAT(AMS)",
   description:
     "A streamlined attendance management system for schools and institutes. Set up daily schedules, mark attendance with a fast default-present flow, and export to Google Sheets.",
 };
