@@ -69,19 +69,24 @@ export async function createAttendanceSheet(
   const shareEmail = process.env.GOOGLE_SHEETS_SHARE_EMAIL
 
   // 1. Create a new spreadsheet
-  const createRes = await sheets.spreadsheets.create({
-    requestBody: {
-      properties: { title },
-      sheets: [
-        {
-          properties: {
-            title: 'Attendance',
-            gridProperties: { frozenRowCount: 1 },
+  let createRes;
+  try {
+    createRes = await sheets.spreadsheets.create({
+      requestBody: {
+        properties: { title },
+        sheets: [
+          {
+            properties: {
+              title: 'Attendance',
+              gridProperties: { frozenRowCount: 1 },
+            },
           },
-        },
-      ],
-    },
-  })
+        ],
+      },
+    })
+  } catch (err) {
+    throw new Error(`Failed to create spreadsheet (Is Google Sheets API enabled?): ${googleErrMsg(err)}`)
+  }
 
   const spreadsheetId = createRes.data.spreadsheetId!
   const sheetId = createRes.data.sheets![0].properties!.sheetId!
@@ -97,102 +102,110 @@ export async function createAttendanceSheet(
     r.instructor, r.studentName, r.rollNumber, r.status, r.remark, r.markedAt,
   ])
 
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: 'Attendance!A1',
-    valueInputOption: 'RAW',
-    requestBody: {
-      values: [header, ...dataRows],
-    },
-  })
+  try {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: 'Attendance!A1',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [header, ...dataRows],
+      },
+    })
+  } catch (err) {
+    throw new Error(`Failed to write data to sheet: ${googleErrMsg(err)}`)
+  }
 
   // 3. Apply formatting: bold header, freeze row, column widths, conditional colours
   const totalRows = dataRows.length + 1
   const totalCols = header.length
 
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: [
-        // Bold the header row
-        {
-          repeatCell: {
-            range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: totalCols },
-            cell: {
-              userEnteredFormat: {
-                backgroundColor: { red: 0.165, green: 0.384, blue: 0.545 }, // #2A6289
-                textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
-                horizontalAlignment: 'CENTER',
-              },
-            },
-            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
-          },
-        },
-        // Alternating row colours for data rows
-        {
-          addConditionalFormatRule: {
-            rule: {
-              ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols }],
-              booleanRule: {
-                condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=ISEVEN(ROW())' }] },
-                format: { backgroundColor: { red: 0.945, green: 0.961, blue: 0.976 } }, // #F1F5F9
-              },
-            },
-            index: 0,
-          },
-        },
-        // Colour "Present" cells green, "Absent" cells red (status column = index 8)
-        {
-          addConditionalFormatRule: {
-            rule: {
-              ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 8, endColumnIndex: 9 }],
-              booleanRule: {
-                condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Present' }] },
-                format: {
-                  backgroundColor: { red: 0.851, green: 0.949, blue: 0.867 }, // #D9F2DD
-                  textFormat: { foregroundColor: { red: 0.106, green: 0.471, blue: 0.220 } },
+  try {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          // Bold the header row
+          {
+            repeatCell: {
+              range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: totalCols },
+              cell: {
+                userEnteredFormat: {
+                  backgroundColor: { red: 0.165, green: 0.384, blue: 0.545 }, // #2A6289
+                  textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
+                  horizontalAlignment: 'CENTER',
                 },
               },
+              fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
             },
-            index: 1,
           },
-        },
-        {
-          addConditionalFormatRule: {
-            rule: {
-              ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 8, endColumnIndex: 9 }],
-              booleanRule: {
-                condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Absent' }] },
-                format: {
-                  backgroundColor: { red: 0.988, green: 0.867, blue: 0.867 }, // #FCDDDD
-                  textFormat: { foregroundColor: { red: 0.671, green: 0.102, blue: 0.102 } },
+          // Alternating row colours for data rows
+          {
+            addConditionalFormatRule: {
+              rule: {
+                ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols }],
+                booleanRule: {
+                  condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=ISEVEN(ROW())' }] },
+                  format: { backgroundColor: { red: 0.945, green: 0.961, blue: 0.976 } }, // #F1F5F9
                 },
               },
+              index: 0,
             },
-            index: 2,
           },
-        },
-        // Auto-resize all columns
-        {
-          autoResizeDimensions: {
-            dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: totalCols },
+          // Colour "Present" cells green, "Absent" cells red (status column = index 8)
+          {
+            addConditionalFormatRule: {
+              rule: {
+                ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 8, endColumnIndex: 9 }],
+                booleanRule: {
+                  condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Present' }] },
+                  format: {
+                    backgroundColor: { red: 0.851, green: 0.949, blue: 0.867 }, // #D9F2DD
+                    textFormat: { foregroundColor: { red: 0.106, green: 0.471, blue: 0.220 } },
+                  },
+                },
+              },
+              index: 1,
+            },
           },
-        },
-        // Add borders
-        {
-          updateBorders: {
-            range: { sheetId, startRowIndex: 0, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols },
-            top: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
-            bottom: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
-            left: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
-            right: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
-            innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
-            innerVertical: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+          {
+            addConditionalFormatRule: {
+              rule: {
+                ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 8, endColumnIndex: 9 }],
+                booleanRule: {
+                  condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Absent' }] },
+                  format: {
+                    backgroundColor: { red: 0.988, green: 0.867, blue: 0.867 }, // #FCDDDD
+                    textFormat: { foregroundColor: { red: 0.671, green: 0.102, blue: 0.102 } },
+                  },
+                },
+              },
+              index: 2,
+            },
           },
-        },
-      ],
-    },
-  })
+          // Auto-resize all columns
+          {
+            autoResizeDimensions: {
+              dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: totalCols },
+            },
+          },
+          // Add borders
+          {
+            updateBorders: {
+              range: { sheetId, startRowIndex: 0, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols },
+              top: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+              bottom: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+              left: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+              right: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+              innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+              innerVertical: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+            },
+          },
+        ],
+      },
+    })
+  } catch (err) {
+    throw new Error(`Failed to format sheet: ${googleErrMsg(err)}`)
+  }
 
   // 4. Share with the configured email so they can open it
   // Wrapped in try/catch — sharing requires Google Drive API to be enabled.
