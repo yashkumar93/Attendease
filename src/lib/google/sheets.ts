@@ -5,6 +5,14 @@ import { google } from 'googleapis'
  * Creates an authenticated Google Sheets + Drive client using the
  * service account credentials stored in environment variables.
  */
+/**
+ * Returns a human-readable error message from a Google API error.
+ */
+function googleErrMsg(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) return String((err as any).message)
+  return String(err)
+}
+
 function getGoogleClients() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
   const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
@@ -187,16 +195,27 @@ export async function createAttendanceSheet(
   })
 
   // 4. Share with the configured email so they can open it
+  // Wrapped in try/catch — sharing requires Google Drive API to be enabled.
+  // If it fails, the sheet is still created and accessible to the service account.
   if (shareEmail) {
-    await drive.permissions.create({
-      fileId: spreadsheetId,
-      requestBody: {
-        type: 'user',
-        role: 'writer',
-        emailAddress: shareEmail,
-      },
-      sendNotificationEmail: false,
-    })
+    try {
+      await drive.permissions.create({
+        fileId: spreadsheetId,
+        requestBody: {
+          type: 'user',
+          role: 'writer',
+          emailAddress: shareEmail,
+        },
+        sendNotificationEmail: false,
+      })
+    } catch (shareErr) {
+      // Drive API not enabled or insufficient permissions — sheet is created but not shared.
+      // Enable Google Drive API at: https://console.cloud.google.com/apis/library/drive.googleapis.com
+      console.warn(
+        `[Sheets] Could not share sheet with ${shareEmail}: ${googleErrMsg(shareErr)}. ` +
+        'Make sure Google Drive API is enabled for this project.'
+      )
+    }
   }
 
   return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
