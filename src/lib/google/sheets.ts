@@ -1,0 +1,203 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { google } from 'googleapis'
+
+/**
+ * Creates an authenticated Google Sheets + Drive client using the
+ * service account credentials stored in environment variables.
+ */
+function getGoogleClients() {
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+  const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+
+  if (!email || !rawKey) {
+    throw new Error(
+      'Missing GOOGLE_SERVICE_ACCOUNT_EMAIL or GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY env vars'
+    )
+  }
+
+  // Next.js stores \n as literal \\n in env vars — normalize them
+  const privateKey = rawKey.replace(/\\n/g, '\n')
+
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: email,
+      private_key: privateKey,
+    },
+    scopes: [
+      'https://www.googleapis.com/auth/spreadsheets',
+      'https://www.googleapis.com/auth/drive',
+    ],
+  })
+
+  const sheets = google.sheets({ version: 'v4', auth })
+  const drive = google.drive({ version: 'v3', auth })
+
+  return { sheets, drive, auth }
+}
+
+export interface AttendanceRow {
+  date: string
+  className: string
+  subjectName: string
+  periodTime: string
+  periodType: string
+  instructor: string
+  studentName: string
+  rollNumber: string
+  status: string
+  remark: string
+  markedAt: string
+}
+
+/**
+ * Creates a new Google Sheet, writes attendance data with formatting,
+ * shares it with the configured email, and returns the sheet URL.
+ */
+export async function createAttendanceSheet(
+  title: string,
+  rows: AttendanceRow[]
+): Promise<string> {
+  const { sheets, drive } = getGoogleClients()
+  const shareEmail = process.env.GOOGLE_SHEETS_SHARE_EMAIL
+
+  // 1. Create a new spreadsheet
+  const createRes = await sheets.spreadsheets.create({
+    requestBody: {
+      properties: { title },
+      sheets: [
+        {
+          properties: {
+            title: 'Attendance',
+            gridProperties: { frozenRowCount: 1 },
+          },
+        },
+      ],
+    },
+  })
+
+  const spreadsheetId = createRes.data.spreadsheetId!
+  const sheetId = createRes.data.sheets![0].properties!.sheetId!
+
+  // 2. Write header + data rows
+  const header = [
+    'Date', 'Class', 'Subject', 'Period Time', 'Period Type',
+    'Instructor', 'Student Name', 'Roll Number', 'Status', 'Remark', 'Marked At',
+  ]
+
+  const dataRows = rows.map((r) => [
+    r.date, r.className, r.subjectName, r.periodTime, r.periodType,
+    r.instructor, r.studentName, r.rollNumber, r.status, r.remark, r.markedAt,
+  ])
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: 'Attendance!A1',
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [header, ...dataRows],
+    },
+  })
+
+  // 3. Apply formatting: bold header, freeze row, column widths, conditional colours
+  const totalRows = dataRows.length + 1
+  const totalCols = header.length
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        // Bold the header row
+        {
+          repeatCell: {
+            range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: totalCols },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: { red: 0.165, green: 0.384, blue: 0.545 }, // #2A6289
+                textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
+                horizontalAlignment: 'CENTER',
+              },
+            },
+            fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+          },
+        },
+        // Alternating row colours for data rows
+        {
+          addConditionalFormatRule: {
+            rule: {
+              ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols }],
+              booleanRule: {
+                condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=ISEVEN(ROW())' }] },
+                format: { backgroundColor: { red: 0.945, green: 0.961, blue: 0.976 } }, // #F1F5F9
+              },
+            },
+            index: 0,
+          },
+        },
+        // Colour "Present" cells green, "Absent" cells red (status column = index 8)
+        {
+          addConditionalFormatRule: {
+            rule: {
+              ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 8, endColumnIndex: 9 }],
+              booleanRule: {
+                condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Present' }] },
+                format: {
+                  backgroundColor: { red: 0.851, green: 0.949, blue: 0.867 }, // #D9F2DD
+                  textFormat: { foregroundColor: { red: 0.106, green: 0.471, blue: 0.220 } },
+                },
+              },
+            },
+            index: 1,
+          },
+        },
+        {
+          addConditionalFormatRule: {
+            rule: {
+              ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 8, endColumnIndex: 9 }],
+              booleanRule: {
+                condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Absent' }] },
+                format: {
+                  backgroundColor: { red: 0.988, green: 0.867, blue: 0.867 }, // #FCDDDD
+                  textFormat: { foregroundColor: { red: 0.671, green: 0.102, blue: 0.102 } },
+                },
+              },
+            },
+            index: 2,
+          },
+        },
+        // Auto-resize all columns
+        {
+          autoResizeDimensions: {
+            dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: totalCols },
+          },
+        },
+        // Add borders
+        {
+          updateBorders: {
+            range: { sheetId, startRowIndex: 0, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols },
+            top: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+            bottom: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+            left: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+            right: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+            innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+            innerVertical: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+          },
+        },
+      ],
+    },
+  })
+
+  // 4. Share with the configured email so they can open it
+  if (shareEmail) {
+    await drive.permissions.create({
+      fileId: spreadsheetId,
+      requestBody: {
+        type: 'user',
+        role: 'writer',
+        emailAddress: shareEmail,
+      },
+      sendNotificationEmail: false,
+    })
+  }
+
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
+}

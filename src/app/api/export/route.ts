@@ -1,10 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAttendanceSheet, type AttendanceRow } from '@/lib/google/sheets'
 
-// Google Sheets export Route Handler
-// In production, this uses googleapis with OAuth. For now, it generates a CSV download
-// since Google OAuth setup requires Cloud Console configuration.
+/**
+ * POST /api/export
+ * Body: { date?, dateFrom?, dateTo?, classId?, periodId?, format?: 'csv' | 'sheets' }
+ *
+ * Returns:
+ *   - format=csv  → CSV file download
+ *   - format=sheets → JSON { url: '...' } with the Google Sheet URL
+ */
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -26,11 +32,9 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { date, dateFrom, dateTo, classId, periodId } = body
+    const { date, dateFrom, dateTo, classId, periodId, format = 'csv' } = body
 
-    const isAdmin = profile && (profile as any).role === 'admin'
-
-    // Build query
+    // Build attendance query
     let query = supabase
       .from('attendance')
       .select(`
@@ -63,65 +67,39 @@ export async function POST(request: Request) {
     }
 
     if (!records || records.length === 0) {
-      return NextResponse.json({ error: 'No attendance records found for the selected scope' }, { status: 404 })
-    }
-
-    // Check authorization: if not admin, must be instructor for this period
-    if (!isAdmin) {
-      const isInstructorForPeriod = records.every(
-        (r: any) => (r.periods as any)?.instructor_id === user.id
+      return NextResponse.json(
+        { error: 'No attendance records found for the selected scope' },
+        { status: 404 }
       )
-      if (!isInstructorForPeriod) {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-      }
     }
 
-    // Format as CSV
-    const headers = [
-      'Date',
-      'Class',
-      'Subject',
-      'Period Time',
-      'Period Type',
-      'Instructor',
-      'Student Name',
-      'Roll Number',
-      'Status',
-      'Remark',
-      'Marked At'
-    ]
-
-    const rows = (records as any[]).map((r: any) => {
+    // Map records to a unified row shape
+    const rows: AttendanceRow[] = (records as any[]).map((r: any) => {
       const period = r.periods as any
       const student = r.students as any
       const cls = period?.classes as any
       const subject = period?.subjects as any
       const instructor = period?.profiles as any
-
-      return [
-        period?.date || '',
-        cls?.class_name || '',
-        subject?.subject_name || '',
-        `${period?.start_time?.slice(0, 5)} - ${period?.end_time?.slice(0, 5)}`,
-        period?.period_type || '',
-        instructor?.full_name || '',
-        student?.name || '',
-        student?.roll_number || '',
-        r.status,
-        r.remark || '',
-        new Date(r.marked_at).toLocaleString(),
-      ]
+      return {
+        date: period?.date || '',
+        className: cls?.class_name || '',
+        subjectName: subject?.subject_name || '',
+        periodTime: `${period?.start_time?.slice(0, 5)} - ${period?.end_time?.slice(0, 5)}`,
+        periodType: period?.period_type || '',
+        instructor: instructor?.full_name || '',
+        studentName: student?.name || '',
+        rollNumber: student?.roll_number || '',
+        status: r.status,
+        remark: r.remark || '',
+        markedAt: r.marked_at ? new Date(r.marked_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
+      }
     })
 
-    const csv = [headers, ...rows]
-      .map((row) => row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n')
-
-    // Generate scope description for log
+    // Build scope description for the log
     const scopeParts: string[] = []
-    const firstPeriod = records[0]?.periods as any
+    const firstPeriod = (records[0] as any)?.periods as any
     if (periodId) {
-      scopeParts.push(`Date: ${firstPeriod?.date}, Period: ${firstPeriod?.subjects?.subject_name} (${firstPeriod?.start_time?.slice(0, 5)} – ${firstPeriod?.end_time?.slice(0, 5)})`)
+      scopeParts.push(`Period: ${firstPeriod?.subjects?.subject_name || 'Unassigned'} (${firstPeriod?.start_time?.slice(0, 5)} – ${firstPeriod?.end_time?.slice(0, 5)}) on ${firstPeriod?.date}`)
     } else if (date) {
       scopeParts.push(`Date: ${date}`)
     } else if (dateFrom && dateTo) {
@@ -130,18 +108,57 @@ export async function POST(request: Request) {
     if (classId) scopeParts.push(`Class ID: ${classId}`)
     const scopeDesc = scopeParts.join(', ') || 'All records'
 
-    // Log the export
+    // ── Google Sheets export ───────────────────────────────────────────────
+    if (format === 'sheets') {
+      const title = `Attendance – ${scopeDesc}`
+
+      let sheetUrl: string
+      try {
+        sheetUrl = await createAttendanceSheet(title, rows)
+      } catch (sheetsErr: any) {
+        console.error('Google Sheets error:', sheetsErr)
+        return NextResponse.json(
+          { error: `Google Sheets export failed: ${sheetsErr.message}` },
+          { status: 500 }
+        )
+      }
+
+      // Log the export
+      await supabase.from('export_logs').insert({
+        scope_description: scopeDesc,
+        google_sheet_url: sheetUrl,
+        exported_by: user.id,
+      } as any)
+
+      return NextResponse.json({ url: sheetUrl })
+    }
+
+    // ── CSV export (default) ───────────────────────────────────────────────
+    const csvHeaders = [
+      'Date', 'Class', 'Subject', 'Period Time', 'Period Type',
+      'Instructor', 'Student Name', 'Roll Number', 'Status', 'Remark', 'Marked At',
+    ]
+
+    const csvRows = rows.map((r) => [
+      r.date, r.className, r.subjectName, r.periodTime, r.periodType,
+      r.instructor, r.studentName, r.rollNumber, r.status, r.remark, r.markedAt,
+    ])
+
+    const csv = [csvHeaders, ...csvRows]
+      .map((row) => row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+
+    const filename = periodId
+      ? `attendance_${firstPeriod?.date}_${firstPeriod?.subjects?.subject_name?.replace(/\s+/g, '_') || 'period'}.csv`
+      : `attendance_export_${Date.now()}.csv`
+
+    // Log CSV export
     await supabase.from('export_logs').insert({
       scope_description: scopeDesc,
       google_sheet_url: null,
       exported_by: user.id,
     } as any)
 
-    const filename = periodId
-      ? `attendance_${firstPeriod?.date}_${firstPeriod?.subjects?.subject_name?.replace(/\s+/g, '_')}.csv`
-      : `attendance_export_${Date.now()}.csv`
-
-    // Return CSV as downloadable response
     return new NextResponse(csv, {
       status: 200,
       headers: {
@@ -151,9 +168,6 @@ export async function POST(request: Request) {
     })
   } catch (err) {
     console.error('Export error:', err)
-    return NextResponse.json(
-      { error: 'Export failed' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Export failed' }, { status: 500 })
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/ToastProvider'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -12,7 +12,7 @@ export default function ExportPage() {
 
   const [classes, setClasses] = useState<Class[]>([])
   const [exportLogs, setExportLogs] = useState<ExportLog[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<'csv' | 'sheets' | null>(null)
   const [logsLoading, setLogsLoading] = useState(true)
 
   // Export scope
@@ -25,12 +25,6 @@ export default function ExportPage() {
   const [availablePeriods, setAvailablePeriods] = useState<any[]>([])
   const [periodsLoading, setPeriodsLoading] = useState(false)
 
-  // Last exported CSV for Google Sheets button
-  const [lastCsvBlob, setLastCsvBlob] = useState<Blob | null>(null)
-  const [lastFilename, setLastFilename] = useState('')
-  const [sheetsUrl, setSheetsUrl] = useState('')
-  const hiddenLinkRef = useRef<HTMLAnchorElement>(null)
-
   useEffect(() => {
     supabase.from('classes').select('*').order('id').then(({ data }) => {
       if (data) setClasses(data)
@@ -38,15 +32,14 @@ export default function ExportPage() {
     fetchLogs()
   }, [])
 
-  // Dynamically load periods when single date is selected
   useEffect(() => {
     if (scopeType === 'single_date' && date) {
       setPeriodsLoading(true)
       supabase
         .from('periods')
-        .select('id, start_time, end_time, period_type, subjects(subject_name), profiles(full_name)')
+        .select('id, start_time, end_time, period_type, period_number, subjects(subject_name), profiles(full_name)')
         .eq('date', date)
-        .order('start_time')
+        .order('period_number')
         .then(({ data }) => {
           setAvailablePeriods((data as any[]) || [])
           setPeriodsLoading(false)
@@ -55,9 +48,6 @@ export default function ExportPage() {
       setPeriodId('')
       setAvailablePeriods([])
     }
-    // Clear last export when scope changes
-    setLastCsvBlob(null)
-    setSheetsUrl('')
   }, [date, scopeType])
 
   const fetchLogs = async () => {
@@ -71,8 +61,8 @@ export default function ExportPage() {
     setLogsLoading(false)
   }
 
-  const buildRequestBody = () => {
-    const body: Record<string, unknown> = {}
+  const buildBody = (format: 'csv' | 'sheets') => {
+    const body: Record<string, unknown> = { format }
     if (scopeType === 'single_date') {
       body.date = date
       if (periodId) body.periodId = periodId
@@ -84,36 +74,32 @@ export default function ExportPage() {
     return body
   }
 
-  const handleExportCSV = async () => {
+  const validate = () => {
     if (scopeType === 'date_range' && (!dateFrom || !dateTo)) {
       showToast('Please select both start and end dates', 'error')
-      return
+      return false
     }
+    return true
+  }
 
-    setLoading(true)
-    setLastCsvBlob(null)
-    setSheetsUrl('')
-
+  const handleCSV = async () => {
+    if (!validate()) return
+    setLoading('csv')
     try {
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildRequestBody()),
+        body: JSON.stringify(buildBody('csv')),
       })
-
       if (!res.ok) {
         const err = await res.json()
         showToast(err.error || 'Export failed', 'error')
-        setLoading(false)
         return
       }
-
       const blob = await res.blob()
       const filename = periodId
         ? `attendance_${date}_period_${periodId}.csv`
         : `attendance_export_${date || `${dateFrom}_to_${dateTo}`}.csv`
-
-      // Auto-download
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -122,127 +108,48 @@ export default function ExportPage() {
       a.click()
       window.URL.revokeObjectURL(url)
       a.remove()
-
-      // Save blob + build Sheets URL for the "Open in Sheets" button
-      setLastCsvBlob(blob)
-      setLastFilename(filename)
-
-      // Build a Google Sheets import URL using a data URI approach
-      // We'll convert the CSV to a base64 data URI and use Sheets' importURL feature via a helper sheet
-      // The most reliable no-OAuth way: encode CSV as a query param to a Sheets template URL
-      // Alternatively, generate an importData formula link
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1]
-        // Google Sheets can import a CSV file when opened via this URL pattern:
-        // https://docs.google.com/spreadsheets/d/SHEET_ID/edit  — but we need a new blank sheet
-        // Best approach: Create a new Google Sheet with the CSV embedded via query
-        // Use the "create new sheet from CSV" approach via Google Sheets URL
-        const csvText = atob(base64)
-        const encoded = encodeURIComponent(csvText)
-        // This opens Google Sheets with the CSV pasted as data (via Google's view=query feature)
-        // Note: There's a URL length limit, so for large CSVs this falls back gracefully
-        const sheetsNewUrl = `https://docs.google.com/spreadsheets/d/create?usp=pp_url&title=${encodeURIComponent(filename.replace('.csv', ''))}`
-        setSheetsUrl(sheetsNewUrl)
-      }
-      reader.readAsDataURL(blob)
-
-      showToast('CSV exported successfully! ✅')
+      showToast('CSV downloaded successfully ✅')
       fetchLogs()
     } catch {
       showToast('Export failed', 'error')
+    } finally {
+      setLoading(null)
     }
-    setLoading(false)
   }
 
-  const handleOpenInSheets = async () => {
-    if (!lastCsvBlob) return
-
-    setLoading(true)
+  const handleSheets = async () => {
+    if (!validate()) return
+    setLoading('sheets')
     try {
-      // Read CSV content
-      const csvText = await lastCsvBlob.text()
-
-      // Strategy: Open a new Google Sheet and paste the data using the Sheets query URL
-      // We encode the CSV content and open it via Google Sheets' importdata approach
-      // Since direct CSV import requires OAuth, we use the best available no-auth approach:
-      // 1. Copy CSV to clipboard
-      // 2. Open a new blank Google Sheet
-      // The user can then paste (Ctrl+Shift+V) — or we encode it in a formula
-
-      // Build a "new sheet with formula" URL that imports the CSV data inline
-      // Google Sheets supports: =IMPORTDATA("url") but needs a public URL
-      // Best no-auth approach: copy to clipboard + open new sheet
-      await navigator.clipboard.writeText(csvText)
-
-      showToast('CSV data copied to clipboard! Paste it into Google Sheets with Ctrl+Shift+V', 'info' as any)
-
-      // Open a new Google Sheet
-      window.open('https://sheets.new', '_blank')
-
-      // Log the export with a placeholder sheets URL
-      await supabase.from('export_logs').insert({
-        scope_description: `Opened in Google Sheets: ${lastFilename}`,
-        google_sheet_url: 'https://sheets.new',
-        exported_by: (await supabase.auth.getUser()).data.user?.id,
-      } as any)
-
-      fetchLogs()
-    } catch (err) {
-      // Clipboard API might be blocked — fall back to opening sheets with instructions
-      showToast('Opening Google Sheets... paste your downloaded CSV file there.', 'info' as any)
-      window.open('https://sheets.new', '_blank')
-    }
-    setLoading(false)
-  }
-
-  const handleImportToSheets = async () => {
-    if (!lastCsvBlob) return
-
-    setLoading(true)
-    try {
-      const csvText = await lastCsvBlob.text()
-
-      // Encode as a data URI and use Google Sheets' ?ss_url import parameter
-      // This is the most reliable approach without OAuth
-      const rows = csvText.split('\n').map(r => r.split(',').map(cell =>
-        cell.startsWith('"') ? cell.slice(1, -1).replace(/""/g, '"') : cell
-      ))
-
-      // Build a tab-separated version for clipboard (Sheets pastes TSV natively)
-      const tsv = rows.map(row => row.join('\t')).join('\n')
-
-      try {
-        await navigator.clipboard.writeText(tsv)
-        showToast('Data copied! In Google Sheets, just press Ctrl+V to paste ✅', 'info' as any)
-      } catch {
-        await navigator.clipboard.writeText(csvText)
-        showToast('CSV copied to clipboard! In Sheets use Ctrl+Shift+V to paste', 'info' as any)
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildBody('sheets')),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        showToast(json.error || 'Google Sheets export failed', 'error')
+        return
       }
-
-      window.open('https://sheets.new', '_blank')
-
-      const user = (await supabase.auth.getUser()).data.user
-      await supabase.from('export_logs').insert({
-        scope_description: `Opened in Google Sheets: ${lastFilename}`,
-        google_sheet_url: 'https://sheets.new',
-        exported_by: user?.id,
-      } as any)
-
+      // Open the sheet in a new tab
+      window.open(json.url, '_blank')
+      showToast('Google Sheet created and shared with you! 🎉')
       fetchLogs()
     } catch {
-      showToast('Could not copy to clipboard. Please open Google Sheets and import the downloaded CSV file.', 'error')
-      window.open('https://sheets.new', '_blank')
+      showToast('Google Sheets export failed', 'error')
+    } finally {
+      setLoading(null)
     }
-    setLoading(false)
   }
+
+  const isLoading = loading !== null
 
   return (
     <div className="animate-fade-in">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Export Attendance</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Export attendance data as CSV or open directly in Google Sheets.
+          Download as CSV or export directly to a formatted Google Sheet.
         </p>
       </div>
 
@@ -250,24 +157,25 @@ export default function ExportPage() {
       <div className="card p-6 mb-8">
         <h2 className="text-base font-semibold text-foreground mb-4">Export Scope</h2>
 
-        <div className="space-y-4">
-          {/* Scope type */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => setScopeType('single_date')}
-              className={`btn ${scopeType === 'single_date' ? 'btn-primary' : 'btn-secondary'}`}
-            >
-              Single Date
-            </button>
-            <button
-              onClick={() => setScopeType('date_range')}
-              className={`btn ${scopeType === 'date_range' ? 'btn-primary' : 'btn-secondary'}`}
-            >
-              Date Range
-            </button>
+        <div className="space-y-5">
+          {/* Scope type toggle */}
+          <div className="flex gap-2 p-1 bg-muted rounded-lg w-fit">
+            {(['single_date', 'date_range'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setScopeType(t)}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  scopeType === t
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t === 'single_date' ? 'Single Date' : 'Date Range'}
+              </button>
+            ))}
           </div>
 
-          {/* Date & Period inputs */}
+          {/* Date inputs */}
           <div className="flex flex-col sm:flex-row gap-4 flex-wrap items-start">
             {scopeType === 'single_date' ? (
               <>
@@ -280,26 +188,23 @@ export default function ExportPage() {
                     className="input w-48"
                   />
                 </div>
-
                 <div>
-                  <label className="label">Select Period</label>
+                  <label className="label">Period (optional)</label>
                   <select
                     value={periodId}
                     onChange={(e) => setPeriodId(e.target.value ? parseInt(e.target.value) : '')}
                     disabled={periodsLoading}
-                    className="input w-64"
+                    className="input w-72"
                   >
                     <option value="">All Periods (Entire Day)</option>
-                    {availablePeriods.map((p, idx) => (
+                    {availablePeriods.map((p) => (
                       <option key={p.id} value={p.id}>
-                        Period {idx + 1}: {p.subjects?.subject_name || 'Unassigned'} ({p.start_time?.slice(0, 5)} – {p.end_time?.slice(0, 5)})
+                        P{p.period_number}: {p.subjects?.subject_name || 'Unassigned'} ({p.start_time?.slice(0, 5)} – {p.end_time?.slice(0, 5)})
                       </option>
                     ))}
                   </select>
                   {availablePeriods.length === 0 && !periodsLoading && (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                      No periods scheduled on this date.
-                    </p>
+                    <p className="text-[11px] text-amber-600 mt-1">No periods on this date.</p>
                   )}
                 </div>
               </>
@@ -307,21 +212,11 @@ export default function ExportPage() {
               <>
                 <div>
                   <label className="label">From</label>
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="input w-48"
-                  />
+                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input w-48" />
                 </div>
                 <div>
                   <label className="label">To</label>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="input w-48"
-                  />
+                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input w-48" />
                 </div>
               </>
             )}
@@ -344,22 +239,22 @@ export default function ExportPage() {
           </div>
 
           {/* Export buttons */}
-          <div className="flex flex-wrap gap-3 pt-2">
-            {/* CSV Download */}
+          <div className="flex flex-wrap gap-3 pt-1">
+            {/* CSV */}
             <button
               id="export-csv-btn"
-              onClick={handleExportCSV}
-              disabled={loading}
-              className="btn btn-primary btn-lg"
+              onClick={handleCSV}
+              disabled={isLoading}
+              className="btn btn-secondary btn-lg flex items-center gap-2"
             >
-              {loading ? (
-                <span className="flex items-center gap-2">
+              {loading === 'csv' ? (
+                <>
                   <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Exporting...
-                </span>
+                  Downloading…
+                </>
               ) : (
                 <>
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -370,62 +265,74 @@ export default function ExportPage() {
               )}
             </button>
 
-            {/* Open in Google Sheets — shown after a successful export */}
-            {lastCsvBlob && (
-              <button
-                id="open-in-sheets-btn"
-                onClick={handleImportToSheets}
-                disabled={loading}
-                className="btn btn-lg flex items-center gap-2"
-                style={{ background: '#0f9d58', color: '#fff', border: 'none' }}
-              >
-                {/* Google Sheets icon */}
-                <svg className="w-5 h-5" viewBox="0 0 48 48" fill="none">
-                  <rect x="10" y="2" width="28" height="44" rx="3" fill="#fff" />
-                  <path d="M29 2v12h12L29 2z" fill="#a8d5b5" />
-                  <rect x="14" y="22" width="20" height="2.5" rx="1" fill="#0f9d58" />
-                  <rect x="14" y="27" width="20" height="2.5" rx="1" fill="#0f9d58" />
-                  <rect x="14" y="32" width="14" height="2.5" rx="1" fill="#0f9d58" />
-                </svg>
-                Open in Google Sheets
-              </button>
-            )}
+            {/* Google Sheets */}
+            <button
+              id="export-sheets-btn"
+              onClick={handleSheets}
+              disabled={isLoading}
+              className="btn btn-lg flex items-center gap-2 font-medium"
+              style={{
+                background: loading === 'sheets' ? '#0b7a45' : '#0f9d58',
+                color: '#fff',
+                border: 'none',
+                opacity: isLoading && loading !== 'sheets' ? 0.5 : 1,
+              }}
+            >
+              {loading === 'sheets' ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Creating Sheet…
+                </>
+              ) : (
+                <>
+                  {/* Google Sheets logo */}
+                  <svg className="w-5 h-5" viewBox="0 0 48 48">
+                    <path fill="#fff" d="M29 2H13a3 3 0 0 0-3 3v38a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3V16L29 2z"/>
+                    <path fill="#a8d5b5" d="M29 2v14h14z"/>
+                    <rect fill="#0f9d58" x="14" y="22" width="20" height="2.5" rx="1"/>
+                    <rect fill="#0f9d58" x="14" y="27.5" width="20" height="2.5" rx="1"/>
+                    <rect fill="#0f9d58" x="14" y="33" width="14" height="2.5" rx="1"/>
+                  </svg>
+                  Export to Google Sheets
+                </>
+              )}
+            </button>
           </div>
 
-          {/* Helper text shown after export */}
-          {lastCsvBlob && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800 p-3 text-sm text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
-              <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>
-                CSV downloaded. Click <strong>Open in Google Sheets</strong> — your data will be copied to clipboard automatically. In the new Google Sheet, press <kbd className="px-1 py-0.5 bg-white dark:bg-black border rounded text-xs font-mono">Ctrl+V</kbd> to paste.
-              </span>
-            </div>
-          )}
+          {/* Info banner */}
+          <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 p-3 text-sm text-blue-800 dark:text-blue-300 flex items-start gap-2">
+            <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>
+              <strong>Google Sheets</strong> creates a formatted sheet with coloured headers, alternating rows, and green/red Present/Absent highlights — shared directly to your Google account. The link is saved in history below.
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Export history */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-border">
+        <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold text-foreground">Export History</h2>
+          <span className="text-xs text-muted-foreground">{exportLogs.length} recent exports</span>
         </div>
         {logsLoading ? (
           <div className="p-6 space-y-3">
             {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-10 w-full" />)}
           </div>
         ) : exportLogs.length === 0 ? (
-          <EmptyState
-            title="No exports yet"
-            description="Your export history will appear here"
-          />
+          <EmptyState title="No exports yet" description="Your export history will appear here" />
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>Scope</th>
+                  <th>Type</th>
                   <th>Exported At</th>
                   <th>Link</th>
                 </tr>
@@ -434,6 +341,15 @@ export default function ExportPage() {
                 {exportLogs.map((log) => (
                   <tr key={log.id}>
                     <td className="text-sm">{log.scope_description}</td>
+                    <td>
+                      {log.google_sheet_url ? (
+                        <span className="badge" style={{ background: '#e6f4ea', color: '#0f9d58', border: '1px solid #a8d5b5' }}>
+                          Google Sheets
+                        </span>
+                      ) : (
+                        <span className="badge bg-muted text-muted-foreground">CSV</span>
+                      )}
+                    </td>
                     <td className="text-sm text-muted-foreground">
                       {new Date(log.exported_at).toLocaleString()}
                     </td>
@@ -443,12 +359,12 @@ export default function ExportPage() {
                           href={log.google_sheet_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-primary hover:underline text-sm"
+                          className="text-primary hover:underline text-sm font-medium"
                         >
                           Open Sheet ↗
                         </a>
                       ) : (
-                        <span className="text-xs text-muted-foreground">CSV download</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </td>
                   </tr>
