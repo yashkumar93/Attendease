@@ -5,6 +5,8 @@ import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentPeriod } from '@/lib/period-config'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import Groq from 'groq-sdk'
 
 export interface ChatbotResult {
   success: boolean
@@ -23,7 +25,7 @@ export interface ChatbotResult {
 // Enforces "at one time only one request will be served"
 let isProcessingRequest = false
 let lockTimestamp = 0
-const LOCK_TIMEOUT_MS = 10000 // 10-second safety timeout
+const LOCK_TIMEOUT_MS = 15000 // 15-second safety timeout (increased for LLM calls)
 
 function acquireLock(): boolean {
   const now = Date.now()
@@ -49,11 +51,11 @@ export async function getFormatGuide(currentPeriodNum?: number | null): Promise<
     `You can mark attendance in any of the following ways:\n\n` +
     `1️⃣ **Click a Period Button:**\n` +
     `Select any period above, then enter absent student names or roll numbers.\n\n` +
-    `2️⃣ **Direct Command Format:**\n` +
+    `2️⃣ **Conversational / Direct Command:**\n` +
     `• \`Period 3 - Rahul, Vicky\` _(marks them absent for Period 3)_\n` +
-    `• \`3: 101, 104\` _(using roll numbers)_\n` +
-    `• \`Period 2 - all present\` _(marks everyone present)_\n` +
-    `• \`P5 Mukund, Amit\`\n\n` +
+    `• \`Mark John and Jane present for P2\` _(marks everyone else absent)_\n` +
+    `• \`Everyone is present today in period 1\` _(marks everyone present)_\n` +
+    `• \`3: 101, 104\` _(using roll numbers)_\n\n` +
     (currentPeriodNum
       ? `🕒 *Current active period:* **Period ${currentPeriodNum}**.\n\n`
       : '') +
@@ -81,6 +83,69 @@ function isHelpRequest(text: string): boolean {
     t.startsWith('how to') ||
     t.startsWith('what is')
   )
+}
+
+interface GeminiIntent {
+  intent: 'mark_attendance' | 'help' | 'unknown'
+  periodNumber: number | null
+  presentNames: string[]
+  absentNames: string[]
+}
+
+async function analyzeIntentWithAI(message: string, explicitPeriod?: number): Promise<GeminiIntent> {
+  const prompt = `
+You are an AI assistant for a school attendance system.
+Analyze the user's message and extract attendance info.
+If the user specifies an explicit period number, use it. Otherwise, extract it from the text (1 to 7).
+If the user says "all present" or "none absent", set presentNames to [] and absentNames to [].
+If the user lists present students (e.g., "present: John, Jane", "only Rahul was present"), put them in presentNames.
+If the user lists absent students (e.g., "absent: Rahul"), put them in absentNames.
+If the user just lists names without specifying present/absent (e.g., "Period 3 - John, Jane"), assume they are ABSENT students (this is the default behavior).
+Explicit period selected from UI: ${explicitPeriod || 'None'}
+User message: "${message}"
+
+Respond strictly with a JSON object (no markdown, no formatting) matching this schema:
+{
+  "intent": "mark_attendance" | "help" | "unknown",
+  "periodNumber": number | null,
+  "presentNames": string[],
+  "absentNames": string[]
+}
+`
+
+  // 1. Try Gemini (gemini-1.5-flash-8b)
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" })
+      const result = await model.generateContent(prompt)
+      const text = result.response.text().replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim()
+      return JSON.parse(text) as GeminiIntent
+    } catch (error) {
+      console.error("Gemini analysis failed, falling back to Groq:", error)
+    }
+  }
+
+  // 2. Try Groq (llama3-8b-8192)
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+      const completion = await groq.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "llama3-8b-8192",
+        temperature: 0,
+        response_format: { type: "json_object" },
+      })
+      const text = completion.choices[0]?.message?.content || "{}"
+      return JSON.parse(text) as GeminiIntent
+    } catch (error) {
+      console.error("Groq analysis failed, falling back to regex:", error)
+    }
+  }
+
+  // 3. Fallback to Regex
+  const parsed = parseMessageFallback(message, explicitPeriod)
+  return { intent: isHelpRequest(message) ? 'help' : 'mark_attendance', ...parsed, presentNames: [] }
 }
 
 /**
@@ -147,8 +212,13 @@ export async function processAttendanceMessage(
       return fail('Only instructors and administrators can mark attendance.')
     }
 
-    // ── 3. Parse Message & Resolve Period ────────────────────────
-    const parsed = parseMessage(trimmed, explicitPeriodNumber)
+    // ── 3. Parse Message & Resolve Period (LLM) ────────────────────────
+    const parsed = await analyzeIntentWithAI(trimmed, explicitPeriodNumber)
+
+    if (parsed.intent === 'help' || parsed.intent === 'unknown') {
+      const guide = await getFormatGuide(activePeriodNum)
+      return fail(guide, true)
+    }
 
     // If still no period number, fallback to current period if active
     if (!parsed.periodNumber) {
@@ -216,19 +286,44 @@ export async function processAttendanceMessage(
       return fail(`No active students found for ${className}.`)
     }
 
-    // ── 7. Match Absent Students In-Memory ───────────────────────
+    // ── 7. Match Students In-Memory ───────────────────────
     const absentIds: number[] = []
-    const matched: string[] = []
+    const matchedAbsent: string[] = []
+    const matchedPresent: string[] = []
     const unmatched: string[] = []
     const ambiguous: { input: string; suggestions: string[] }[] = []
 
-    if (parsed.absentNames.length > 0) {
+    // Logic: If user specified present list ONLY, everyone else is absent
+    if (parsed.presentNames.length > 0 && parsed.absentNames.length === 0) {
+      const presentIds: number[] = []
+      for (const inputName of parsed.presentNames) {
+        const match = matchStudent(inputName, students)
+        if (match.type === 'exact') {
+          presentIds.push(match.student!.id)
+          matchedPresent.push(match.student!.name)
+        } else if (match.type === 'ambiguous') {
+          ambiguous.push({
+            input: inputName,
+            suggestions: match.suggestions!.map((s) => s.name),
+          })
+        } else {
+          unmatched.push(inputName)
+        }
+      }
+
+      // Mark everyone NOT in presentIds as absent
+      for (const s of students) {
+        if (!presentIds.includes(s.id)) {
+          absentIds.push(s.id)
+        }
+      }
+    } else {
+      // Logic: User specified absent list (and optionally present list, but absent list takes precedence for calculating absences)
       for (const inputName of parsed.absentNames) {
         const match = matchStudent(inputName, students)
-
         if (match.type === 'exact') {
           absentIds.push(match.student!.id)
-          matched.push(match.student!.name)
+          matchedAbsent.push(match.student!.name)
         } else if (match.type === 'ambiguous') {
           ambiguous.push({
             input: inputName,
@@ -250,8 +345,8 @@ export async function processAttendanceMessage(
         success: false,
         message:
           `Some student names match multiple people. Please use the full name or roll number:\n\n${ambigLines}\n\n` +
-          (matched.length > 0 ? `✅ Matched so far: ${matched.join(', ')}` : ''),
-        matched,
+          (matchedAbsent.length > 0 ? `✅ Matched so far: ${matchedAbsent.join(', ')}` : ''),
+        matched: matchedAbsent,
         unmatched,
         ambiguous,
         totalPresent: 0,
@@ -272,8 +367,6 @@ export async function processAttendanceMessage(
     }))
 
     // ── 9. Execute Database Upsert in Background ─────────────────
-    // Using Next.js `after()` for sub-second UI latency while guaranteeing
-    // the upsert executes and releases the single-request lock cleanly.
     after(async () => {
       try {
         const { error: upsertErr } = await adminClient
@@ -290,26 +383,70 @@ export async function processAttendanceMessage(
       }
     })
 
-    // ── 10. Instant Response to User ─────────────────────────────
-    let msg = `✅ **${periodLabel}** — ${className}\n\n`
-    msg += `👥 **${totalPresent}** present · **${totalAbsent}** absent (out of ${students.length})`
+    // ── 10. Instant Response to User (Conversational) ──────────────
+    let baseMsg = `✅ **${periodLabel}** — ${className}\n\n`
+    baseMsg += `👥 **${totalPresent}** present · **${totalAbsent}** absent (out of ${students.length})`
 
-    if (matched.length > 0) {
-      msg += `\n\n❌ **Absent:** ${matched.join(', ')}`
+    if (matchedAbsent.length > 0) {
+      baseMsg += `\n\n❌ **Absent:** ${matchedAbsent.join(', ')}`
+    } else if (matchedPresent.length > 0 && parsed.absentNames.length === 0) {
+      baseMsg += `\n\n✅ **Present List Marked:** ${matchedPresent.join(', ')}`
     }
-
+    
     if (unmatched.length > 0) {
-      msg += `\n\n⚠️ **Could not find:** ${unmatched.join(', ')}`
+      baseMsg += `\n\n⚠️ **Could not find:** ${unmatched.join(', ')}`
     }
 
     if (totalAbsent === 0) {
-      msg += '\n\n🎉 **All students marked present!**'
+      baseMsg += '\n\n🎉 **All students marked present!**'
+    }
+
+    let finalMsg = baseMsg;
+
+    // Use AI for a conversational final response if API keys exist and no errors
+    if (unmatched.length === 0) {
+      const chatPrompt = `
+You are a friendly, conversational AI assistant for a school attendance system.
+You just marked attendance. Rewrite the following status message to be warm, natural, and conversational, while keeping all the factual info (Period, Class, Present count, Absent count, and names). Keep the emojis. Do not add markdown code blocks. Keep it concise.
+
+Status message:
+${baseMsg}
+`
+      let aiResponse = "";
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" })
+          const chatResult = await model.generateContent(chatPrompt)
+          aiResponse = chatResult.response.text().trim()
+        } catch(e) {
+          console.error("Gemini conversational generation failed", e)
+        }
+      }
+
+      if (!aiResponse && process.env.GROQ_API_KEY) {
+        try {
+          const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+          const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: chatPrompt }],
+            model: "llama3-8b-8192",
+            temperature: 0.7,
+          })
+          aiResponse = completion.choices[0]?.message?.content?.trim() || ""
+        } catch(e) {
+          console.error("Groq conversational generation failed", e)
+        }
+      }
+
+      if (aiResponse) {
+         finalMsg = aiResponse;
+      }
     }
 
     return {
       success: true,
-      message: msg,
-      matched,
+      message: finalMsg,
+      matched: matchedAbsent.length > 0 ? matchedAbsent : matchedPresent,
       unmatched,
       ambiguous: [],
       totalPresent,
@@ -324,16 +461,14 @@ export async function processAttendanceMessage(
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-interface ParsedMessage {
+interface ParsedMessageFallback {
   periodNumber: number | null
   absentNames: string[]
 }
 
-function parseMessage(raw: string, explicitPeriod?: number): ParsedMessage {
+function parseMessageFallback(raw: string, explicitPeriod?: number): ParsedMessageFallback {
   const trimmed = raw.trim()
 
-  // 1. Try to extract period number from the beginning
-  // Patterns: "3 - names", "Period 3 - names", "P3 - names", "3: names", "Period 3 all present", just "3"
   const periodRegex = /^(?:period\s*|p\s*)?(\d)\s*[-–:.]?\s*/i
   const match = trimmed.match(periodRegex)
 
@@ -348,7 +483,6 @@ function parseMessage(raw: string, explicitPeriod?: number): ParsedMessage {
     }
   }
 
-  // 2. Check for "all present", "none absent", "all", "0", or empty
   if (
     !remainder ||
     /^all\s+present$/i.test(remainder) ||
@@ -360,10 +494,8 @@ function parseMessage(raw: string, explicitPeriod?: number): ParsedMessage {
     return { periodNumber, absentNames: [] }
   }
 
-  // Strip prefix words like "absent:", "absentees:", "absent students:"
   remainder = remainder.replace(/^(?:absent(?:ees)?|absent students?)\s*[:\-–]?\s*/i, '').trim()
 
-  // 3. Split by comma, newline, semicolon, or "and"
   const names = remainder
     .split(/[,\n;]+|\band\b/i)
     .map((n) => n.trim())
@@ -384,27 +516,24 @@ function matchStudent(
 ): MatchResult {
   const input = inputName.toLowerCase().trim()
 
-  // 1. Try exact match (case-insensitive name)
   const exactMatch = students.find((s) => s.name.toLowerCase() === input)
   if (exactMatch) {
     return { type: 'exact', student: exactMatch }
   }
 
-  // 2. Try roll number match
   const rollMatch = students.find((s) => s.roll_number.toLowerCase() === input)
   if (rollMatch) {
     return { type: 'exact', student: rollMatch }
   }
 
-  // 3. Try partial / substring / first name match
   const partialMatches = students.filter((s) => {
     const studentName = s.name.toLowerCase()
     const nameParts = studentName.split(/\s+/)
     return (
       studentName === input ||
       studentName.includes(input) ||
-      nameParts[0] === input || // First name match
-      nameParts[nameParts.length - 1] === input // Last name match
+      nameParts[0] === input || 
+      nameParts[nameParts.length - 1] === input
     )
   })
 
@@ -416,7 +545,6 @@ function matchStudent(
     return { type: 'ambiguous', suggestions: partialMatches }
   }
 
-  // 4. Fuzzy match: first 3 characters
   if (input.length >= 3) {
     const fuzzyMatches = students.filter((s) =>
       s.name.toLowerCase().startsWith(input.substring(0, 3))
