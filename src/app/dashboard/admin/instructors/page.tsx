@@ -6,6 +6,7 @@ import { createInstructor, updateInstructor, toggleInstructorStatus } from '@/ap
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/ToastProvider'
+import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
 import type { Profile } from '@/lib/types/database'
 
 export default function InstructorsPage() {
@@ -75,11 +76,21 @@ export default function InstructorsPage() {
   }
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+    <div className="animate-fade-in space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-hairline">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Instructors</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage instructor accounts and credentials</p>
+          <div className="flex items-center gap-2 mb-1">
+            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
+              Faculty Directory
+            </span>
+          </div>
+          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
+            Instructors
+          </h1>
+          <p className="text-sm text-muted mt-1 font-sans">
+            Manage teaching faculty accounts, credentials, and teaching status
+          </p>
         </div>
         <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -92,12 +103,14 @@ export default function InstructorsPage() {
       <div className="card overflow-hidden">
         {loading ? (
           <div className="p-8 space-y-3">
-            {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-12 w-full" />)}
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="card h-12 w-full animate-pulse bg-surface-soft/60" />
+            ))}
           </div>
         ) : instructors.length === 0 ? (
           <EmptyState
             title="No instructors yet"
-            description="Add instructors to assign them to class periods"
+            description="Add instructors to assign them to daily academic periods."
             action={<button onClick={() => setShowAddModal(true)} className="btn btn-primary">Add Instructor</button>}
           />
         ) : (
@@ -116,13 +129,13 @@ export default function InstructorsPage() {
                   <tr key={inst.id}>
                     <td>
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-bold">
+                        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary text-xs font-semibold">
                           {inst.full_name[0]?.toUpperCase()}
                         </div>
-                        <span className="font-medium">{inst.full_name}</span>
+                        <span className="font-medium text-ink">{inst.full_name}</span>
                       </div>
                     </td>
-                    <td className="text-muted-foreground">{inst.contact || '—'}</td>
+                    <td className="text-muted">{inst.contact || '—'}</td>
                     <td>
                       <span className={`badge ${inst.is_active ? 'badge-active' : 'badge-inactive'}`}>
                         {inst.is_active ? 'Active' : 'Inactive'}
@@ -130,7 +143,11 @@ export default function InstructorsPage() {
                     </td>
                     <td>
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setEditingInstructor(inst)} className="btn btn-ghost btn-sm" title="Edit">
+                        <button
+                          onClick={() => setEditingInstructor(inst)}
+                          className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-surface-card transition-colors"
+                          title="Edit"
+                        >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                           </svg>
@@ -138,7 +155,11 @@ export default function InstructorsPage() {
                         <button
                           onClick={() => handleToggle(inst)}
                           disabled={isPending}
-                          className={`btn btn-sm ${inst.is_active ? 'btn-ghost text-danger' : 'btn-ghost text-success'}`}
+                          className={`p-1.5 rounded-md transition-colors ${
+                            inst.is_active
+                              ? 'text-muted-soft hover:text-danger hover:bg-danger-light'
+                              : 'text-muted-soft hover:text-success hover:bg-success-light'
+                          }`}
                           title={inst.is_active ? 'Deactivate' : 'Activate'}
                         >
                           {inst.is_active ? (
@@ -166,7 +187,7 @@ export default function InstructorsPage() {
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
             <label className="label">Full Name *</label>
-            <input name="full_name" required className="input" placeholder="Jane Smith" />
+            <input name="full_name" required className="input" placeholder="e.g. Jane Smith" />
           </div>
           <div>
             <label className="label">Email *</label>
@@ -180,7 +201,7 @@ export default function InstructorsPage() {
             <label className="label">Contact</label>
             <input name="contact" className="input" placeholder="Phone number (optional)" />
           </div>
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
             <button type="button" onClick={() => setShowAddModal(false)} className="btn btn-secondary">Cancel</button>
             <button type="submit" disabled={isPending} className="btn btn-primary">
               {isPending ? 'Creating...' : 'Create Instructor'}
@@ -201,7 +222,7 @@ export default function InstructorsPage() {
               <label className="label">Contact</label>
               <input name="contact" defaultValue={editingInstructor.contact || ''} className="input" />
             </div>
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
               <button type="button" onClick={() => setEditingInstructor(null)} className="btn btn-secondary">Cancel</button>
               <button type="submit" disabled={isPending} className="btn btn-primary">
                 {isPending ? 'Saving...' : 'Update'}

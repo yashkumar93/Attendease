@@ -269,47 +269,43 @@ export default function AttendancePage() {
   return (
     <div className="animate-fade-in">
       {/* Period header */}
-      <div className="card p-5 mb-6">
+      <div className="card p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1.5">
               <button onClick={() => router.back()} className="btn btn-ghost btn-icon btn-sm">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                 </svg>
               </button>
-              <h1 className="text-xl font-bold text-foreground">
+              <h1 className="font-serif text-2xl sm:text-3xl font-normal text-ink tracking-tight">
                 {period?.subjects?.subject_name} — {period?.classes?.class_name}
               </h1>
               {userRole === 'admin' && (
-                <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs">
-                  👑 Admin Mode
+                <span className="badge badge-pill text-[11px] bg-surface-cream-strong text-ink">
+                  Admin Mode
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground ml-10">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted ml-8 sm:ml-10 font-sans">
               <span>📅 {period?.date}</span>
-              <span>🕐 {period?.start_time?.slice(0, 5)} – {period?.end_time?.slice(0, 5)}</span>
+              <span className="font-mono">🕐 {period?.start_time?.slice(0, 5)} – {period?.end_time?.slice(0, 5)}</span>
               <span>👨‍🏫 {period?.profiles?.full_name}</span>
-              <span className={`badge ${
-                period?.period_type === 'Lecture' ? 'bg-blue-100 text-blue-700' :
-                period?.period_type === 'Lab' ? 'bg-purple-100 text-purple-700' :
-                'bg-gray-100 text-gray-700'
-              }`}>{period?.period_type}</span>
+              <span className="badge badge-pill text-[10px]">{period?.period_type}</span>
             </div>
           </div>
-          <div className="flex items-center gap-4 ml-10 sm:ml-0">
-            <div className="text-center">
-              <p className="text-2xl font-bold text-success">{presentCount}</p>
-              <p className="text-xs text-muted-foreground">Present</p>
+          <div className="flex items-center gap-6 ml-8 sm:ml-0">
+            <div className="text-center min-w-[50px]">
+              <p className="font-serif text-3xl font-normal text-success-foreground">{presentCount}</p>
+              <p className="text-[10px] text-muted uppercase tracking-wider">Present</p>
             </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-danger">{absentCount}</p>
-              <p className="text-xs text-muted-foreground">Absent</p>
+            <div className="text-center min-w-[50px]">
+              <p className="font-serif text-3xl font-normal text-danger-foreground">{absentCount}</p>
+              <p className="text-[10px] text-muted uppercase tracking-wider">Absent</p>
             </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-foreground">{students.length}</p>
-              <p className="text-xs text-muted-foreground">Total</p>
+            <div className="text-center min-w-[50px]">
+              <p className="font-serif text-3xl font-normal text-ink">{students.length}</p>
+              <p className="text-[10px] text-muted uppercase tracking-wider">Total</p>
             </div>
           </div>
         </div>
@@ -317,13 +313,13 @@ export default function AttendancePage() {
 
       {/* Editing Mode Banner */}
       {isEditing && (
-        <div className="mb-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
-          <div className="flex items-center gap-2.5 text-amber-800 dark:text-amber-200">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+        <div className="mb-5 p-4 rounded-lg bg-surface-card border-l-4 border-l-accent-amber border border-hairline flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-2.5 text-ink">
+            <span className="w-2.5 h-2.5 rounded-full bg-accent-amber animate-pulse" />
             <div>
-              <p className="font-semibold text-sm">Attendance Edit Mode Active</p>
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                Click any student card to toggle between Present & Absent. Changes will be saved to the audit log.
+              <p className="font-medium text-sm text-ink">Attendance Edit Mode Active</p>
+              <p className="text-xs text-muted">
+                Click any student card to toggle between Present & Absent. Changes will be saved to the audit trail.
               </p>
             </div>
           </div>
@@ -366,7 +362,7 @@ export default function AttendancePage() {
           <button
             onClick={handleSubmit}
             disabled={isPending}
-            className="btn btn-success btn-lg"
+            className="btn btn-primary btn-lg"
           >
             {isPending ? (
               <span className="flex items-center gap-2">
@@ -378,7 +374,7 @@ export default function AttendancePage() {
               </span>
             ) : (
               <>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Submit Attendance
@@ -387,7 +383,7 @@ export default function AttendancePage() {
           </button>
         ) : !isEditing ? (
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs text-success font-medium px-3 py-2 bg-success/10 rounded-xl">
+            <div className="flex items-center gap-1.5 text-xs text-success-foreground font-medium px-3 py-1.5 bg-success-light border border-success/30 rounded-md">
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>

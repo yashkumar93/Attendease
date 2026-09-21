@@ -6,6 +6,7 @@ import { createStudent, updateStudent, toggleStudentStatus, bulkImportStudents }
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/ToastProvider'
+import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
 import Papa from 'papaparse'
 import type { Student, Class } from '@/lib/types/database'
 
@@ -103,27 +104,19 @@ export default function StudentsPage() {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
-        const rows = results.data as Record<string, string>[]
-        const mapped = rows
-          .filter((r) => r.name && r.roll_number && r.class_id)
-          .map((r) => ({
-            name: r.name.trim(),
-            roll_number: r.roll_number.trim(),
-            class_id: parseInt(r.class_id),
-            contact: r.contact?.trim() || undefined,
-          }))
-
-        if (mapped.length === 0) {
-          showToast('No valid rows found in CSV. Ensure columns: name, roll_number, class_id', 'error')
-          return
-        }
+        const rows = (results.data as any[]).map((row) => ({
+          name: row.name?.trim(),
+          roll_number: row.roll_number?.trim(),
+          class_id: parseInt(row.class_id),
+          contact: row.contact?.trim() || undefined,
+        }))
 
         startTransition(async () => {
-          const result = await bulkImportStudents(mapped)
+          const result = await bulkImportStudents(rows)
           if (result.error) {
             showToast(result.error, 'error')
           } else {
-            showToast(`Successfully imported ${mapped.length} students`)
+            showToast(`Successfully imported ${rows.length} students`)
             setShowImportModal(false)
             fetchData()
           }
@@ -139,11 +132,11 @@ export default function StudentsPage() {
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
         <label className="label">Full Name *</label>
-        <input name="name" defaultValue={student?.name} required className="input" placeholder="John Doe" />
+        <input name="name" defaultValue={student?.name} required className="input" placeholder="e.g. John Doe" />
       </div>
       <div>
         <label className="label">Roll Number *</label>
-        <input name="roll_number" defaultValue={student?.roll_number} required className="input" placeholder="2024001" />
+        <input name="roll_number" defaultValue={student?.roll_number} required className="input font-mono" placeholder="e.g. 2024001" />
       </div>
       <div>
         <label className="label">Class *</label>
@@ -158,7 +151,7 @@ export default function StudentsPage() {
         <label className="label">Contact</label>
         <input name="contact" defaultValue={student?.contact || ''} className="input" placeholder="Phone or email (optional)" />
       </div>
-      <div className="flex justify-end gap-3 pt-2">
+      <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
         <button type="button" onClick={() => { setShowAddModal(false); setEditingStudent(null) }} className="btn btn-secondary">
           Cancel
         </button>
@@ -170,13 +163,21 @@ export default function StudentsPage() {
   )
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-hairline">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Students</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage student records across all classes
+          <div className="flex items-center gap-2 mb-1">
+            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
+              Student Directory
+            </span>
+          </div>
+          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
+            Students
+          </h1>
+          <p className="text-sm text-muted mt-1 font-sans">
+            Manage student enrollment and cohort assignment records
           </p>
         </div>
         <div className="flex gap-2">
@@ -196,7 +197,7 @@ export default function StudentsPage() {
       </div>
 
       {/* Filters */}
-      <div className="card p-4 mb-6">
+      <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
@@ -209,7 +210,7 @@ export default function StudentsPage() {
             <select
               value={filterClass}
               onChange={(e) => setFilterClass(e.target.value ? parseInt(e.target.value) : '')}
-              className="input w-full sm:w-40"
+              className="input w-full sm:w-44"
             >
               <option value="">All Classes</option>
               {classes.map((c) => (
@@ -234,13 +235,13 @@ export default function StudentsPage() {
         {loading ? (
           <div className="p-8 space-y-3">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="skeleton h-12 w-full" />
+              <div key={i} className="card h-12 w-full animate-pulse bg-surface-soft/60" />
             ))}
           </div>
         ) : filteredStudents.length === 0 ? (
           <EmptyState
             title="No students found"
-            description={searchQuery ? 'Try a different search term' : 'Add your first student to get started'}
+            description={searchQuery ? 'Try a different search query' : 'Add your first student to get started.'}
             action={
               !searchQuery ? (
                 <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
@@ -265,10 +266,10 @@ export default function StudentsPage() {
               <tbody>
                 {filteredStudents.map((student) => (
                   <tr key={student.id}>
-                    <td className="font-mono text-sm">{student.roll_number}</td>
-                    <td className="font-medium">{student.name}</td>
-                    <td>{student.classes?.class_name}</td>
-                    <td className="text-muted-foreground">{student.contact || '—'}</td>
+                    <td className="font-mono text-xs">{student.roll_number}</td>
+                    <td className="font-medium text-ink">{student.name}</td>
+                    <td className="text-body">{student.classes?.class_name}</td>
+                    <td className="text-muted">{student.contact || '—'}</td>
                     <td>
                       <span className={`badge ${student.status === 'active' ? 'badge-active' : 'badge-inactive'}`}>
                         {student.status}
@@ -278,7 +279,7 @@ export default function StudentsPage() {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setEditingStudent(student)}
-                          className="btn btn-ghost btn-sm"
+                          className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-surface-card transition-colors"
                           title="Edit"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -288,7 +289,11 @@ export default function StudentsPage() {
                         <button
                           onClick={() => handleToggleStatus(student)}
                           disabled={isPending}
-                          className={`btn btn-sm ${student.status === 'active' ? 'btn-ghost text-danger' : 'btn-ghost text-success'}`}
+                          className={`p-1.5 rounded-md transition-colors ${
+                            student.status === 'active'
+                              ? 'text-muted-soft hover:text-danger hover:bg-danger-light'
+                              : 'text-muted-soft hover:text-success hover:bg-success-light'
+                          }`}
                           title={student.status === 'active' ? 'Deactivate' : 'Activate'}
                         >
                           {student.status === 'active' ? (
@@ -310,7 +315,7 @@ export default function StudentsPage() {
           </div>
         )}
         {!loading && filteredStudents.length > 0 && (
-          <div className="px-4 py-3 border-t border-border text-sm text-muted-foreground">
+          <div className="px-5 py-3 border-t border-hairline text-xs text-muted">
             Showing {filteredStudents.length} of {students.length} students
           </div>
         )}
@@ -329,10 +334,10 @@ export default function StudentsPage() {
       {/* Import Modal */}
       <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Import Students from CSV">
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Upload a CSV file with the following columns: <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">name</code>, <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">roll_number</code>, <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">class_id</code>, <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">contact</code> (optional)
+          <p className="text-sm text-muted">
+            Upload a CSV file with the following columns: <code className="px-1.5 py-0.5 bg-surface-card border border-hairline rounded text-xs font-mono">name</code>, <code className="px-1.5 py-0.5 bg-surface-card border border-hairline rounded text-xs font-mono">roll_number</code>, <code className="px-1.5 py-0.5 bg-surface-card border border-hairline rounded text-xs font-mono">class_id</code>, <code className="px-1.5 py-0.5 bg-surface-card border border-hairline rounded text-xs font-mono">contact</code> (optional)
           </p>
-          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+          <div className="border border-dashed border-hairline rounded-lg p-8 text-center bg-canvas hover:border-primary/40 transition-colors">
             <input
               type="file"
               accept=".csv"
@@ -341,15 +346,15 @@ export default function StudentsPage() {
               id="csv-upload"
             />
             <label htmlFor="csv-upload" className="cursor-pointer">
-              <svg className="w-8 h-8 mx-auto text-muted-foreground mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+              <svg className="w-8 h-8 mx-auto text-muted-soft mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
               </svg>
-              <p className="text-sm font-medium text-foreground">Click to upload CSV</p>
-              <p className="text-xs text-muted-foreground mt-1">or drag and drop</p>
+              <p className="text-sm font-medium text-ink">Click to upload CSV</p>
+              <p className="text-xs text-muted mt-1">or drag and drop</p>
             </label>
           </div>
           {isPending && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-muted">
               <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />

@@ -11,9 +11,9 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
-    <div className="empty-state animate-fade-in">
+    <div className="empty-state animate-fade-in py-12">
       {icon || (
-        <svg fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
+        <svg fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-10 h-10 mb-3 text-muted-soft">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -21,9 +21,9 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
           />
         </svg>
       )}
-      <h3 className="text-base font-medium text-foreground mb-1">{title}</h3>
+      <h3 className="font-serif text-lg font-normal text-ink mb-1">{title}</h3>
       {description && (
-        <p className="text-sm text-muted-foreground max-w-sm">{description}</p>
+        <p className="text-sm text-muted max-w-sm">{description}</p>
       )}
       {action && <div className="mt-4">{action}</div>}
     </div>

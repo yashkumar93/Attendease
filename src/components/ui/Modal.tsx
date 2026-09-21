@@ -27,11 +27,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+          <h2 className="font-serif text-xl font-normal text-ink tracking-tight">{title}</h2>
           <button
             onClick={onClose}
-            className="btn btn-ghost btn-icon rounded-full"
+            className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-surface-card transition-colors"
             aria-label="Close modal"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -40,7 +40,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
           </button>
         </div>
         {/* Body */}
-        <div className="px-6 py-4">{children}</div>
+        <div className="px-6 py-5">{children}</div>
       </div>
     </div>
   )
@@ -77,8 +77,10 @@ export function ConfirmModal({
       >
         <div className="px-6 py-5">
           <div className="flex items-start gap-4">
-            <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-              confirmVariant === 'danger' ? 'bg-danger-light' : 'bg-primary-light'
+            <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center border ${
+              confirmVariant === 'danger'
+                ? 'bg-danger-light border-danger/20 text-danger'
+                : 'bg-primary-light border-primary/20 text-primary'
             }`}>
               {confirmVariant === 'danger' ? (
                 <svg className="w-5 h-5 text-danger" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -91,12 +93,12 @@ export function ConfirmModal({
               )}
             </div>
             <div>
-              <h3 className="text-base font-semibold text-foreground">{title}</h3>
-              <p className="text-sm text-muted-foreground mt-1">{message}</p>
+              <h3 className="font-serif text-lg font-normal text-ink">{title}</h3>
+              <p className="text-sm text-muted mt-1">{message}</p>
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-3 px-6 py-4 bg-muted/50 rounded-b-xl">
+        <div className="flex justify-end gap-3 px-6 py-4 bg-surface-soft/60 border-t border-hairline rounded-b-xl">
           <button onClick={onClose} className="btn btn-secondary" disabled={loading}>
             Cancel
           </button>

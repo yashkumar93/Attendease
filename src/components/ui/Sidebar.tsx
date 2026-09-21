@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types/database'
+import { AnthropicSpikeMark } from './AnthropicSpikeMark'
 
 interface NavItem {
   label: string
@@ -146,16 +147,14 @@ export function Sidebar() {
 
   const sidebarContent = (
     <>
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center shadow-lg">
-          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+      {/* Brand Header with Anthropic Spike Mark */}
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/8">
+        <div className="w-8 h-8 rounded-lg bg-surface-dark-elevated border border-white/10 flex items-center justify-center text-primary shadow-sm">
+          <AnthropicSpikeMark className="w-4 h-4" />
         </div>
         <div>
-          <h1 className="text-white font-bold text-base tracking-tight">AttendEase</h1>
-          <p className="text-sidebar-text text-[11px]">Management System</p>
+          <h1 className="text-on-dark font-serif text-lg tracking-tight font-normal">AttendEase</h1>
+          <p className="text-on-dark-soft text-[11px] font-sans tracking-normal">Academic Attendance</p>
         </div>
       </div>
 
@@ -170,12 +169,12 @@ export function Sidebar() {
                   setMobileOpen(false)
                   window.dispatchEvent(new CustomEvent('open-quick-mark'))
                 }}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 w-full text-sidebar-text hover:bg-white/5 hover:text-sidebar-text-active"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 w-full text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark"
               >
                 {item.icon}
                 {item.label}
                 <div className="ml-auto">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold">⚡</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">⚡ Quick</span>
                 </div>
               </button>
             )
@@ -187,14 +186,14 @@ export function Sidebar() {
               onClick={() => setMobileOpen(false)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isActive(item.href)
-                  ? 'bg-white/10 text-sidebar-text-active shadow-sm'
-                  : 'text-sidebar-text hover:bg-white/5 hover:text-sidebar-text-active'
+                  ? 'bg-surface-dark-elevated text-on-dark shadow-sm'
+                  : 'text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark'
               }`}
             >
               {item.icon}
               {item.label}
               {isActive(item.href) && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />
               )}
             </Link>
           )
@@ -202,22 +201,22 @@ export function Sidebar() {
       </nav>
 
       {/* User profile */}
-      <div className="px-3 py-4 border-t border-white/10">
-        <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-bold">
+      <div className="px-3 py-4 border-t border-white/8">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-dark-soft/60 border border-white/5">
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary text-xs font-semibold">
             {profile?.full_name?.[0]?.toUpperCase() || '?'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-white font-medium truncate">
+            <p className="text-sm text-on-dark font-medium truncate">
               {profile?.full_name || 'Loading...'}
             </p>
-            <p className="text-xs text-sidebar-text capitalize">
+            <p className="text-xs text-on-dark-soft capitalize">
               {profile?.role || '...'}
             </p>
           </div>
           <button
             onClick={handleLogout}
-            className="p-1.5 rounded-lg text-sidebar-text hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-md text-on-dark-soft hover:text-on-dark hover:bg-surface-dark-elevated transition-colors"
             title="Sign out"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -234,7 +233,7 @@ export function Sidebar() {
       {/* Mobile hamburger */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-sidebar-bg text-white shadow-lg"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-md bg-surface-dark text-on-dark shadow-md border border-white/10"
         aria-label="Open navigation"
       >
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -252,7 +251,7 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-40 w-64 bg-sidebar-bg flex flex-col transition-transform duration-300 ${
+        className={`fixed lg:static inset-y-0 left-0 z-40 w-64 bg-surface-dark border-r border-white/8 flex flex-col transition-transform duration-300 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >

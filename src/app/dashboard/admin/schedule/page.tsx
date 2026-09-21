@@ -4,8 +4,8 @@ import { useState, useEffect, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPeriod, deletePeriod } from '@/app/actions/schedule'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/ToastProvider'
+import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
 import type { Class, Subject, Profile } from '@/lib/types/database'
 
 interface PeriodRow {
@@ -85,20 +85,23 @@ export default function SchedulePage() {
     })
   }
 
-  const periodTypeColors: Record<string, string> = {
-    Lecture: 'bg-blue-100 text-blue-700',
-    Lab: 'bg-purple-100 text-purple-700',
-    Tutorial: 'bg-amber-100 text-amber-700',
-    Other: 'bg-gray-100 text-gray-700',
-  }
-
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-hairline">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Daily Schedule</h1>
-          <p className="text-sm text-muted-foreground mt-1">Set up class periods for each day</p>
+          <div className="flex items-center gap-2 mb-1">
+            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
+              Academic Timetable
+            </span>
+          </div>
+          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
+            Daily Schedule
+          </h1>
+          <p className="text-sm text-muted mt-1 font-sans">
+            Configure periods, timings, and faculty assignments for each day
+          </p>
         </div>
         <button
           onClick={() => { setShowAddModal(true); setAddForClass(null) }}
@@ -112,32 +115,39 @@ export default function SchedulePage() {
       </div>
 
       {/* Date + Class filter */}
-      <div className="card p-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-foreground whitespace-nowrap">Date:</label>
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row gap-4 items-center">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <label className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
+              Date:
+            </label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="input w-44"
+              className="input w-full sm:w-44"
             />
           </div>
           {classes.length > 1 && (
-            <select
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : '')}
-              className="input w-full sm:w-44"
-            >
-              <option value="">All Classes</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>{c.class_name}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <label className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
+                Class:
+              </label>
+              <select
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : '')}
+                className="input w-full sm:w-48"
+              >
+                <option value="">All Classes</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.class_name}</option>
+                ))}
+              </select>
+            </div>
           )}
           <div className="flex-1" />
-          <div className="text-sm font-medium text-muted-foreground self-center">
-            <span className="font-semibold text-foreground">{periods.length}</span> / 7 periods scheduled
+          <div className="text-xs font-medium text-muted self-center">
+            <span className="font-semibold text-ink font-mono">{periods.length}</span> / 7 periods scheduled
           </div>
         </div>
       </div>
@@ -145,7 +155,9 @@ export default function SchedulePage() {
       {/* Schedule grid */}
       {loading ? (
         <div className="space-y-4">
-          {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-32 rounded-xl" />)}
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="card p-6 h-32 animate-pulse bg-surface-soft/60" />
+          ))}
         </div>
       ) : (
         <div className="space-y-6 stagger-children">
@@ -153,22 +165,22 @@ export default function SchedulePage() {
             const classPeriods = periodsForClass(cls.id)
             return (
               <div key={cls.id} className="card overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3 bg-muted/50 border-b border-border">
+                <div className="flex items-center justify-between px-5 py-3.5 bg-surface-soft border-b border-hairline">
                   <div className="flex items-center gap-3">
-                    <h3 className="font-semibold text-foreground">{cls.class_name}</h3>
-                    <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    <h3 className="font-serif text-lg font-normal text-ink">{cls.class_name}</h3>
+                    <span className="badge badge-pill text-[11px] bg-surface-card border-hairline">
                       Cohort (50 Students)
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted font-mono">
                       {classPeriods.length} / 7 periods
                     </span>
                     <button
                       onClick={() => { setAddForClass(cls.id); setShowAddModal(true) }}
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-secondary btn-sm"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                       </svg>
                       Add Period
@@ -176,48 +188,37 @@ export default function SchedulePage() {
                   </div>
                 </div>
                 {classPeriods.length === 0 ? (
-                  <div className="p-6 text-center text-sm text-muted-foreground">
-                    No periods scheduled for this class yet.
+                  <div className="p-8 text-center text-sm text-muted">
+                    No periods scheduled for this cohort yet.
                   </div>
                 ) : (
-                  <div className="divide-y divide-border">
+                  <div className="divide-y divide-hairline">
                     {classPeriods.map((period, index) => (
-                      <div key={period.id} className="flex items-center gap-4 px-5 py-3 hover:bg-muted/30 transition-colors">
+                      <div key={period.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-soft/40 transition-colors">
                         <div className="flex items-center gap-2.5 w-52 flex-shrink-0">
-                          <span className="px-2 py-0.5 text-xs font-bold rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
-                            Period {index + 1}
+                          <span className="badge badge-pill text-xs font-mono font-medium bg-surface-cream-strong text-ink">
+                            P{index + 1}
                           </span>
-                          <span className="text-sm font-mono text-muted-foreground">
+                          <span className="text-xs font-mono text-muted">
                             {period.start_time.slice(0, 5)} – {period.end_time.slice(0, 5)}
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-foreground">{period.subjects?.subject_name}</p>
-                          <p className="text-xs text-muted-foreground">{period.profiles?.full_name}</p>
+                          <p className="font-medium text-sm text-ink">{period.subjects?.subject_name}</p>
+                          <p className="text-xs text-muted">{period.profiles?.full_name}</p>
                         </div>
-                        <span className={`badge ${periodTypeColors[period.period_type] || periodTypeColors.Other}`}>
+                        <span className="badge badge-pill text-[10px]">
                           {period.period_type}
                         </span>
-                        <div className="flex gap-1">
-                          <a
-                            href={`/dashboard/attendance/${period.id}`}
-                            className="btn btn-ghost btn-sm text-success"
-                            title="Mark attendance"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </a>
-                          <button
-                            onClick={() => setDeletingPeriod(period)}
-                            className="btn btn-ghost btn-sm text-danger"
-                            title="Delete period"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                            </svg>
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => setDeletingPeriod(period)}
+                          className="p-1.5 rounded-md text-muted-soft hover:text-danger hover:bg-danger-light transition-colors"
+                          title="Delete period"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          </svg>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -229,70 +230,88 @@ export default function SchedulePage() {
       )}
 
       {/* Add Period Modal */}
-      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setAddForClass(null) }} title="Add Period">
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => { setShowAddModal(false); setAddForClass(null) }}
+        title="Add Period to Schedule"
+      >
         <form onSubmit={handleAddPeriod} className="space-y-4">
-          {!addForClass && classes.length > 1 ? (
+          {!addForClass && (
             <div>
               <label className="label">Class *</label>
               <select name="class_id" required className="input">
-                <option value="">Select class</option>
-                {classes.map((c) => <option key={c.id} value={c.id}>{c.class_name}</option>)}
+                <option value="">Select class...</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.class_name}</option>
+                ))}
               </select>
             </div>
-          ) : (
-            <input type="hidden" name="class_id" value={addForClass || classes[0]?.id || ''} />
           )}
+
           <div>
             <label className="label">Subject *</label>
             <select name="subject_id" required className="input">
-              <option value="">Select subject</option>
-              {subjects.map((s) => <option key={s.id} value={s.id}>{s.subject_name}</option>)}
+              <option value="">Select subject...</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>{s.subject_name}</option>
+              ))}
             </select>
           </div>
+
           <div>
             <label className="label">Instructor *</label>
             <select name="instructor_id" required className="input">
-              <option value="">Select instructor</option>
-              {instructors.map((i) => <option key={i.id} value={i.id}>{i.full_name}</option>)}
+              <option value="">Select instructor...</option>
+              {instructors.map((ins) => (
+                <option key={ins.id} value={ins.id}>{ins.full_name}</option>
+              ))}
             </select>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Start Time *</label>
-              <input name="start_time" type="time" required className="input" />
+              <input type="time" name="start_time" required className="input" defaultValue="09:20" />
             </div>
             <div>
               <label className="label">End Time *</label>
-              <input name="end_time" type="time" required className="input" />
+              <input type="time" name="end_time" required className="input" defaultValue="10:15" />
             </div>
           </div>
+
           <div>
-            <label className="label">Period Type *</label>
-            <select name="period_type" required className="input" defaultValue="Lecture">
+            <label className="label">Period Type</label>
+            <select name="period_type" defaultValue="Lecture" className="input">
               <option value="Lecture">Lecture</option>
               <option value="Lab">Lab</option>
               <option value="Tutorial">Tutorial</option>
               <option value="Other">Other</option>
             </select>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => { setShowAddModal(false); setAddForClass(null) }} className="btn btn-secondary">Cancel</button>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-hairline">
+            <button
+              type="button"
+              onClick={() => { setShowAddModal(false); setAddForClass(null) }}
+              className="btn btn-secondary"
+            >
+              Cancel
+            </button>
             <button type="submit" disabled={isPending} className="btn btn-primary">
-              {isPending ? 'Creating...' : 'Create Period'}
+              {isPending ? 'Adding...' : 'Add Period'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Delete Confirm */}
+      {/* Delete Confirmation */}
       <ConfirmModal
         isOpen={!!deletingPeriod}
         onClose={() => setDeletingPeriod(null)}
         onConfirm={handleDelete}
         title="Delete Period"
-        message={`Delete ${deletingPeriod?.subjects?.subject_name} (${deletingPeriod?.start_time?.slice(0, 5)} – ${deletingPeriod?.end_time?.slice(0, 5)}) for ${deletingPeriod?.classes?.class_name}?`}
-        confirmLabel="Delete"
-        confirmVariant="danger"
+        message={`Delete this period (${deletingPeriod?.subjects?.subject_name} at ${deletingPeriod?.start_time.slice(0, 5)})? Any attendance marked for this period will also be deleted.`}
+        confirmLabel="Delete Period"
         loading={isPending}
       />
     </div>

@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect, useTransition } from 'react'
 import { processAttendanceMessage, type ChatbotResult } from '@/app/actions/chatbot'
 import { getPeriodStatusSummary, type PeriodStatusSummary, type PeriodTiming } from '@/lib/period-config'
+import { AnthropicSpikeMark } from './AnthropicSpikeMark'
 
 interface ChatMessage {
   id: string
@@ -183,24 +184,22 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
     <div className="chat-panel">
       {/* Header */}
       <div className="chat-panel-header">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <div className="chat-panel-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-            </svg>
+            <AnthropicSpikeMark className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-white">Quick Mark</h3>
-            <p className="text-[10px] text-white/70">
+            <h3 className="font-serif text-base font-normal text-on-dark tracking-tight">Quick Mark</h3>
+            <p className="text-[11px] text-on-dark-soft">
               {periodStatus?.currentPeriod
                 ? `Period ${periodStatus.currentPeriod.period_number} Live • IST`
-                : 'AI Attendance Assistant • IST'}
+                : 'Attendance Assistant • IST'}
             </p>
           </div>
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          className="p-1.5 rounded-md text-on-dark-soft hover:text-on-dark hover:bg-surface-dark-elevated transition-colors"
           aria-label="Close chat"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -218,9 +217,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
           >
             {msg.role === 'bot' && (
               <div className="chat-avatar-bot">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                </svg>
+                <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
               </div>
             )}
             <div
@@ -239,7 +236,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
                 <div className="chat-current-period-banner">
                   <div className="chat-current-period-info">
                     <span className="chat-live-pulse" />
-                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span className="text-xs font-medium text-body-strong">
                       Period {periodStatus.currentPeriod.period_number} Live ({periodStatus.currentPeriod.label})
                     </span>
                   </div>
@@ -328,7 +325,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
       {selectedPeriod && (
         <div className="chat-selected-period-bar">
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
             <span>Marking <strong>Period {selectedPeriod}</strong></span>
           </div>
           <button
