@@ -197,27 +197,68 @@ code, pre, .font-mono {
 }
 
 /* ============================================================
-   Animations
+   Motion Designer System: Tokens, Keyframes & Timing
    ============================================================ */
 
+:root {
+  --ease-out-natural: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-fast: cubic-bezier(0.4, 0, 1, 1);
+  --ease-interactive: cubic-bezier(0.2, 0, 0, 1);
+  --duration-feedback: 120ms;
+  --duration-state: 200ms;
+  --duration-transition: 320ms;
+}
+
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideInRight {
-  from { opacity: 0; transform: translateX(12px); }
+  from { opacity: 0; transform: translateX(16px); }
   to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.97); }
+  from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes modalBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalContentIn {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes toastEnter {
+  from { opacity: 0; transform: translateX(20px) scale(0.96); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes toastExit {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(24px) scale(0.94); }
+}
+
+@keyframes popStatus {
+  0% { transform: scale(0.75); }
+  60% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+@keyframes countPulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); color: var(--primary); }
+  100% { transform: scale(1); }
 }
 
 @keyframes pulse-soft {
@@ -231,19 +272,19 @@ code, pre, .font-mono {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.22s var(--ease-out-natural) forwards;
 }
 
 .animate-fade-in-up {
-  animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeInUp 0.3s var(--ease-out-natural) forwards;
 }
 
 .animate-slide-in-right {
-  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideInRight 0.24s var(--ease-out-natural) forwards;
 }
 
 .animate-scale-in {
-  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: scaleIn 0.2s var(--ease-out-natural) forwards;
 }
 
 .animate-pulse-soft {
@@ -251,20 +292,21 @@ code, pre, .font-mono {
 }
 
 .animate-spin {
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
+/* Sibling list staggers capped at 180ms total delay */
 .stagger-children > * {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.22s var(--ease-out-natural) forwards;
   opacity: 0;
 }
 
-.stagger-children > *:nth-child(1) { animation-delay: 0.03s; }
-.stagger-children > *:nth-child(2) { animation-delay: 0.06s; }
-.stagger-children > *:nth-child(3) { animation-delay: 0.09s; }
-.stagger-children > *:nth-child(4) { animation-delay: 0.12s; }
-.stagger-children > *:nth-child(5) { animation-delay: 0.15s; }
-.stagger-children > *:nth-child(6) { animation-delay: 0.18s; }
+.stagger-children > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.05s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.08s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.11s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.14s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.17s; }
 
 /* ============================================================
    Cards & Surfaces
@@ -298,12 +340,46 @@ code, pre, .font-mono {
 }
 
 .card-interactive {
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  transition: transform 0.18s var(--ease-out-natural), border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .card-interactive:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: #d8d0c5;
+}
+
+.card-interactive:active {
+  transform: translateY(0) scale(0.99);
+  transition-duration: 0.08s;
+}
+
+/* ============================================================
+   Authored Motion: Attendance Roster Interactions
+   ============================================================ */
+
+.attendance-card {
+  transition: transform 0.15s var(--ease-out-natural), background-color 0.18s ease, border-color 0.18s ease;
+  will-change: transform;
+}
+
+.attendance-card:hover {
+  transform: translateY(-1px);
+}
+
+.attendance-card:active {
+  transform: scale(0.985);
+  transition-duration: 0.08s;
+}
+
+.attendance-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: popStatus 0.2s var(--ease-out-natural) forwards;
+}
+
+.attendance-counter-pulse {
+  animation: countPulse 0.3s var(--ease-out-natural) forwards;
 }
 
 /* Full bleed coral callout */
@@ -397,7 +473,7 @@ code, pre, .font-mono {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 0.75rem 1rem;
-  text-align: left;
+  text-align: start;
   border-bottom: 1px solid var(--hairline);
   position: sticky;
   top: 0;
@@ -405,11 +481,11 @@ code, pre, .font-mono {
 }
 
 .data-table th:first-child {
-  border-top-left-radius: var(--radius-lg);
+  border-start-start-radius: var(--radius-lg);
 }
 
 .data-table th:last-child {
-  border-top-right-radius: var(--radius-lg);
+  border-start-end-radius: var(--radius-lg);
 }
 
 .data-table td {
@@ -487,15 +563,21 @@ code, pre, .font-mono {
   font-weight: 500;
   line-height: 1.25rem;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform 0.12s var(--ease-out-natural), background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
   border: 1px solid transparent;
   outline: none;
   white-space: nowrap;
 }
 
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: 0.08s;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none !important;
 }
 
 .btn:focus-visible {
@@ -609,8 +691,9 @@ code, pre, .font-mono {
   align-items: center;
   justify-content: center;
   background: rgba(20, 20, 19, 0.45);
-  backdrop-filter: blur(4px);
-  animation: fadeIn 0.15s ease-out;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: modalBackdropIn 0.2s var(--ease-out-natural) forwards;
 }
 
 .modal-content {
@@ -622,7 +705,7 @@ code, pre, .font-mono {
   width: 90%;
   max-height: 85vh;
   overflow-y: auto;
-  animation: scaleIn 0.2s ease-out;
+  animation: modalContentIn 0.28s var(--ease-out-natural) forwards;
 }
 
 /* ============================================================
@@ -630,38 +713,48 @@ code, pre, .font-mono {
    ============================================================ */
 
 .toast {
-  position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  z-index: 100;
   padding: 0.75rem 1rem;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 500;
   box-shadow: var(--shadow-md);
-  animation: slideInRight 0.25s ease-out;
+  animation: toastEnter 0.26s var(--ease-out-natural) forwards;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s var(--ease-out-natural), opacity 0.15s ease;
+}
+
+.toast:hover {
+  transform: translateY(-1px);
+}
+
+.toast:active {
+  transform: scale(0.97);
+}
+
+.toast.toast-exit {
+  animation: toastExit 0.16s var(--ease-in-fast) forwards;
 }
 
 .toast-success {
   background: var(--surface-dark);
   color: var(--on-dark);
-  border-left: 4px solid var(--success);
+  border-inline-start: 4px solid var(--success);
 }
 
 .toast-error {
   background: var(--surface-dark);
   color: var(--on-dark);
-  border-left: 4px solid var(--danger);
+  border-inline-start: 4px solid var(--danger);
 }
 
 .toast-info {
   background: var(--surface-dark);
   color: var(--on-dark);
-  border-left: 4px solid var(--primary);
+  border-inline-start: 4px solid var(--primary);
 }
 
 /* ============================================================
@@ -706,8 +799,8 @@ code, pre, .font-mono {
 
 .chat-fab {
   position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
+  inset-block-end: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  inset-inline-end: calc(1.5rem + env(safe-area-inset-right, 0px));
   z-index: 50;
   display: flex;
   align-items: center;
@@ -780,8 +873,8 @@ code, pre, .font-mono {
 
 .chat-panel {
   position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
+  inset-block-end: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  inset-inline-end: calc(1.5rem + env(safe-area-inset-right, 0px));
   z-index: 60;
   width: 390px;
   max-height: 580px;
@@ -799,8 +892,8 @@ code, pre, .font-mono {
 
 @media (max-width: 640px) {
   .chat-panel {
-    bottom: 0;
-    right: 0;
+    inset-block-end: 0;
+    inset-inline-end: 0;
     width: 100%;
     max-height: 82vh;
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
@@ -890,29 +983,29 @@ code, pre, .font-mono {
 .chat-bubble-user {
   background-color: var(--surface-dark);
   color: var(--on-dark);
-  border-bottom-right-radius: 4px;
+  border-end-end-radius: 4px;
 }
 
 .chat-bubble-bot {
   background-color: var(--surface-card);
   color: var(--ink);
   border: 1px solid var(--hairline);
-  border-bottom-left-radius: 4px;
+  border-end-start-radius: 4px;
 }
 
 .chat-bubble-success {
   border-color: rgba(93, 184, 114, 0.4);
-  border-left: 3px solid var(--success);
+  border-inline-start: 3px solid var(--success);
 }
 
 .chat-bubble-warning {
   border-color: rgba(212, 160, 23, 0.4);
-  border-left: 3px solid var(--warning);
+  border-inline-start: 3px solid var(--warning);
 }
 
 .chat-bubble-error {
   border-color: rgba(198, 69, 69, 0.4);
-  border-left: 3px solid var(--danger);
+  border-inline-start: 3px solid var(--danger);
 }
 
 .chat-bubble-content {
@@ -1008,6 +1101,7 @@ code, pre, .font-mono {
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0.75rem));
   background-color: var(--canvas);
   border-top: 1px solid var(--hairline);
   flex-shrink: 0;
@@ -1208,4 +1302,48 @@ code, pre, .font-mono {
 
 .chat-selected-period-clear:hover {
   color: var(--danger);
+}
+
+/* ============================================================
+   Accessibility: Prefers-Reduced-Motion
+   Preserves meaning & feedback without disorienting motion
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-slide-in-right,
+  .animate-scale-in,
+  .modal-overlay,
+  .modal-content,
+  .toast,
+  .attendance-status-icon,
+  .stagger-children > * {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .btn:active,
+  .card-interactive:active,
+  .attendance-card:active {
+    transform: none !important;
+    opacity: 0.85 !important;
+  }
+
+  .chat-fab-ping,
+  .livePulse,
+  .animate-pulse-soft,
+  .chatFabPulse {
+    animation: none !important;
+  }
 }

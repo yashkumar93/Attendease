@@ -113,9 +113,10 @@ export async function bulkImportStudents(
 export async function getInstructors() {
   const supabase = await createClient()
 
+  // BN-3: Select only the columns callers need — avoids over-fetching all profile columns
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select('id, full_name, contact, is_active, created_at')
     .eq('role', 'instructor')
     .order('full_name')
 

@@ -50,6 +50,11 @@ export async function getExportData(params: {
     query = query.eq('periods.class_id', params.classId)
   }
 
+  // BN-4: Safety cap — an unbounded date-range export could return tens of
+  // thousands of rows into server memory. Limit to 5 000 rows per request.
+  // For larger exports, callers should implement pagination.
+  query = query.limit(5000)
+
   const { data, error } = await query
   if (error) throw new Error(error.message)
   return data as any[]

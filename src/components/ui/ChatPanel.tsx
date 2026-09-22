@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import { useState, useRef, useEffect, useTransition } from 'react'
+import { useState, useRef, useEffect, useTransition, useMemo } from 'react'
 import { processAttendanceMessage, type ChatbotResult } from '@/app/actions/chatbot'
 import { getPeriodStatusSummary, type PeriodStatusSummary, type PeriodTiming } from '@/lib/period-config'
 import { AnthropicSpikeMark } from './AnthropicSpikeMark'
@@ -29,28 +29,28 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
     const status = getPeriodStatusSummary()
     setPeriodStatus(status)
 
-    let welcomeText = '👋 **Welcome to Quick Mark!**\n\n'
+    let welcomeText = '**Welcome to Quick Mark**\n\n'
 
     if (status.statusType === 'in_period' && status.currentPeriod) {
       welcomeText +=
-        `🕒 **Period ${status.currentPeriod.period_number} is currently active** (${status.currentPeriod.label}).\n\n` +
-        `Click **Mark Period ${status.currentPeriod.period_number}** below to proceed, or choose any period.`
+        `**Period ${status.currentPeriod.period_number} is currently active** (${status.currentPeriod.label}).\n\n` +
+        `Select **Mark Period ${status.currentPeriod.period_number}** below to continue, or choose any period.`
     } else if (status.statusType === 'lunch_break') {
       welcomeText +=
-        `🍱 **Lunch Break right now** (12:40 – 1:30 PM).\n\n` +
-        `Select any period below to mark or record attendance:`
+        `**Lunch break** (12:40 – 1:30 PM).\n\n` +
+        `Select any period below to record attendance:`
     } else if (status.statusType === 'before_school') {
       welcomeText +=
-        `🌅 School begins at **9:20 AM** (Current time: ${status.displayTime}).\n\n` +
+        `Classes begin at **9:20 AM** (Current time: ${status.displayTime}).\n\n` +
         `Select any period below to mark attendance ahead of time:`
     } else if (status.statusType === 'after_school') {
       welcomeText +=
-        `🌙 School hours ended at **4:00 PM** (Current time: ${status.displayTime}).\n\n` +
-        `You can select or specify any period below to mark attendance:`
+        `Classes ended at **4:00 PM** (Current time: ${status.displayTime}).\n\n` +
+        `Select any period below to mark or adjust attendance:`
     } else {
       welcomeText +=
         `Current time: **${status.displayTime}**.\n\n` +
-        `Select any period below to mark attendance:`
+        `Select any period below to record attendance:`
     }
 
     setMessages([
@@ -84,7 +84,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
       id: `bot-select-${Date.now()}`,
       role: 'bot',
       content:
-        `Selected **Period ${periodNum}**${label}!\n\n` +
+        `Selected **Period ${periodNum}**${label}.\n\n` +
         `Now enter the names or roll numbers of **absent students** (separated by comma), or type **all present** if everyone attended.`,
       timestamp: new Date(),
     }
@@ -134,7 +134,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
         const errMsg: ChatMessage = {
           id: `err-${Date.now()}`,
           role: 'bot',
-          content: `❌ Something went wrong: ${err.message || 'Unknown error'}`,
+          content: `Unable to process attendance. ${err.message || 'Verify the period number and student names, then try again.'}`,
           showPeriodChips: true,
           timestamp: new Date(),
         }
@@ -152,10 +152,18 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
     }
   }
 
-  // Simple markdown-like renderer for bold and code
-  const renderContent = (content: string) => {
+  // BN-13: Cache rendered output per message to avoid re-running regex splits
+  // on every render cycle. The cache is a stable Map keyed by `id + content`
+  // so new messages still get rendered fresh.
+  const renderCache = useRef(new Map<string, React.ReactNode[]>())
+
+  const renderContent = (id: string, content: string) => {
+    const cacheKey = `${id}::${content}`
+    if (renderCache.current.has(cacheKey)) {
+      return renderCache.current.get(cacheKey)!
+    }
     const parts = content.split(/(\*\*.*?\*\*|`.*?`|\n)/g)
-    return parts.map((part, i) => {
+    const rendered = parts.map((part, i) => {
       if (part === '\n') return <br key={i} />
       if (part.startsWith('**') && part.endsWith('**')) {
         return <strong key={i}>{part.slice(2, -2)}</strong>
@@ -178,7 +186,18 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
       }
       return <span key={i}>{part}</span>
     })
+    renderCache.current.set(cacheKey, rendered)
+    return rendered
   }
+
+  // Prune cache entries for messages no longer in the list to avoid unbounded growth
+  useMemo(() => {
+    const activeKeys = new Set(messages.map((m) => `${m.id}::${m.content}`))
+    for (const key of renderCache.current.keys()) {
+      if (!activeKeys.has(key)) renderCache.current.delete(key)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length])
 
   return (
     <div className="chat-panel">
@@ -228,7 +247,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
               } ${msg.result?.success === false && msg.result?.unmatched.length > 0 ? 'chat-bubble-error' : ''}`}
             >
               <div className="chat-bubble-content">
-                {renderContent(msg.content)}
+                {renderContent(msg.id, msg.content)}
               </div>
 
               {/* Show Active Period Action Button if live */}
@@ -334,7 +353,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
             className="chat-selected-period-clear"
             title="Deselect period"
           >
-            ✕ Cancel
+            Cancel
           </button>
         </div>
       )}
@@ -349,8 +368,8 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
           onKeyDown={handleKeyDown}
           placeholder={
             selectedPeriod
-              ? `Period ${selectedPeriod} absent names (e.g. Rahul, Vicky or all present)...`
-              : 'e.g. Period 3 - Vicky, Rahul or select above...'
+              ? `Period ${selectedPeriod} absent names (e.g. Rahul, Vicky or all present)`
+              : 'e.g. Period 3 - Vicky, Rahul or select a period above'
           }
           disabled={isPending}
           className="chat-input"

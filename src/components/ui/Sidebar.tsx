@@ -56,15 +56,6 @@ const navItems: NavItem[] = [
     instructorOnly: true,
   },
   {
-    label: 'My Periods',
-    href: '/dashboard/instructor',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-  },
-  {
     label: 'Students',
     href: '/dashboard/admin/students',
     icon: (
@@ -147,8 +138,6 @@ export function Sidebar() {
     if (!profile) return false
     if (item.adminOnly && profile.role !== 'admin') return false
     if (item.instructorOnly && profile.role !== 'instructor') return false
-    // Hide "My Periods" from admin (they use the admin attendance view)
-    if (item.href === '/dashboard/instructor' && profile.role === 'admin') return false
     return true
   })
 
@@ -185,7 +174,7 @@ export function Sidebar() {
               >
                 {item.icon}
                 {item.label}
-                <div className="ml-auto">
+                <div className="ms-auto">
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">⚡ Quick</span>
                 </div>
               </button>
@@ -196,7 +185,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
                 isActive(item.href)
                   ? 'bg-surface-dark-elevated text-on-dark shadow-sm'
                   : 'text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark'
@@ -205,7 +194,7 @@ export function Sidebar() {
               {item.icon}
               {item.label}
               {isActive(item.href) && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />
+                <div className="ms-auto w-1.5 h-1.5 rounded-full bg-primary animate-scale-in" />
               )}
             </Link>
           )
@@ -242,16 +231,30 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile hamburger */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-md bg-surface-dark text-on-dark shadow-md border border-white/10"
-        aria-label="Open navigation"
-      >
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-        </svg>
-      </button>
+      {/* Mobile Top App Bar with brand chrome & navigation drawer toggle */}
+      <div className="lg:hidden fixed top-0 inset-x-0 z-30 h-14 bg-surface-dark border-b border-white/8 flex items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="p-1.5 rounded-md text-on-dark hover:bg-surface-dark-elevated transition-colors"
+            aria-label="Open navigation"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+          <div className="flex items-center gap-2">
+            <AnthropicSpikeMark className="w-4 h-4 text-primary" />
+            <span className="font-serif text-base text-on-dark tracking-tight">AttendEase</span>
+          </div>
+        </div>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-quick-mark'))}
+          className="text-xs px-2.5 py-1 rounded-full bg-primary/20 text-primary font-semibold border border-primary/30 active:scale-95 transition-transform"
+        >
+          ⚡ Quick Mark
+        </button>
+      </div>
 
       {/* Mobile overlay */}
       {mobileOpen && (
@@ -263,7 +266,7 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-40 w-64 bg-surface-dark border-r border-white/8 flex flex-col transition-transform duration-300 ${
+        className={`fixed lg:static inset-y-0 start-0 z-40 w-64 bg-surface-dark border-e border-white/8 flex flex-col transition-transform duration-300 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >

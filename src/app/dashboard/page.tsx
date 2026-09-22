@@ -49,21 +49,28 @@ export default async function DashboardPage() {
   // Fetch summary stats
   const today = new Date().toISOString().split('T')[0]
 
-  const { count: totalStudents } = await supabase
-    .from('students')
-    .select('*', { count: 'exact', head: true })
-    .eq('status', 'active')
-
-  const { count: totalInstructors } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .eq('role', 'instructor')
-    .eq('is_active', true)
-
-  const { count: todayPeriods } = await supabase
-    .from('periods')
-    .select('*', { count: 'exact', head: true })
-    .eq('date', today)
+  // BN-11: Fire all three count queries concurrently with Promise.all.
+  // Previously these were three sequential awaits (3 serial DB round-trips).
+  // Now they run in parallel, reducing dashboard load time by ~2 RTT.
+  const [
+    { count: totalStudents },
+    { count: totalInstructors },
+    { count: todayPeriods },
+  ] = await Promise.all([
+    supabase
+      .from('students')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active'),
+    supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .eq('role', 'instructor')
+      .eq('is_active', true),
+    supabase
+      .from('periods')
+      .select('*', { count: 'exact', head: true })
+      .eq('date', today),
+  ])
 
   const isAdmin = p.role === 'admin'
 
@@ -72,21 +79,21 @@ export default async function DashboardPage() {
       label: 'Active Students',
       value: totalStudents || 0,
       badge: 'Enrolled',
-      accent: 'border-l-4 border-l-primary',
+      accent: 'border-s-4 border-s-primary',
       show: isAdmin,
     },
     {
       label: 'Instructors',
       value: totalInstructors || 0,
       badge: 'Faculty',
-      accent: 'border-l-4 border-l-accent-teal',
+      accent: 'border-s-4 border-s-accent-teal',
       show: isAdmin,
     },
     {
       label: "Today's Periods",
       value: todayPeriods || 0,
       badge: 'Schedule',
-      accent: 'border-l-4 border-l-accent-amber',
+      accent: 'border-s-4 border-s-accent-amber',
       show: true,
     },
   ]
@@ -238,7 +245,7 @@ export default async function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <a
               href="/dashboard/instructor/attendance"
-              className="flex items-start gap-4 p-5 rounded-lg border border-hairline bg-canvas hover:border-[#d8d0c5] hover:bg-surface-soft/60 transition-all group"
+              className="flex items-start gap-4 p-5 rounded-lg border border-hairline bg-canvas hover:border-[#d8d0c5] hover:bg-surface-soft/60 transition-all group card-interactive"
             >
               <div className="w-10 h-10 rounded-md bg-surface-card border border-hairline flex items-center justify-center text-ink flex-shrink-0 group-hover:text-primary transition-colors">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -250,26 +257,7 @@ export default async function DashboardPage() {
                   Attendance Overview
                 </p>
                 <p className="text-xs text-muted mt-0.5">
-                  View and manage attendance for all classes and dates.
-                </p>
-              </div>
-            </a>
-
-            <a
-              href="/dashboard/instructor"
-              className="flex items-start gap-4 p-5 rounded-lg border border-hairline bg-canvas hover:border-[#d8d0c5] hover:bg-surface-soft/60 transition-all group"
-            >
-              <div className="w-10 h-10 rounded-md bg-surface-card border border-hairline flex items-center justify-center text-ink flex-shrink-0 group-hover:text-primary transition-colors">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-ink group-hover:text-primary transition-colors">
-                  My Periods
-                </p>
-                <p className="text-xs text-muted mt-0.5">
-                  View your assigned teaching sessions for today.
+                  View, take, and manage attendance for all classes and academic periods.
                 </p>
               </div>
             </a>

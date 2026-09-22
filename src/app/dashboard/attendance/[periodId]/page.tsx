@@ -179,7 +179,7 @@ export default function AttendancePage() {
       if (result.error) {
         showToast(result.error, 'error')
       } else {
-        showToast('Attendance submitted successfully! ✅')
+        showToast('Attendance submitted')
         await fetchAttendanceData()
       }
     })
@@ -196,7 +196,7 @@ export default function AttendancePage() {
       if (result.error) {
         showToast(result.error, 'error')
       } else {
-        showToast('Attendance changes saved! ✅')
+        showToast('Changes saved')
         setIsEditing(false)
         await fetchAttendanceData()
       }
@@ -215,7 +215,7 @@ export default function AttendancePage() {
       if (result.error) {
         showToast(result.error, 'error')
       } else {
-        showToast(`Marked ${studentEditModal.record.students.name} as ${studentEditModal.targetStatus} ✅`)
+        showToast(`Marked ${studentEditModal.record.students.name} as ${studentEditModal.targetStatus}`)
         setStudentEditModal(null)
         await fetchAttendanceData()
       }
@@ -237,14 +237,14 @@ export default function AttendancePage() {
       const data = await getAttendanceHistory(attendanceId)
       setHistory(data as HistoryRow[])
     } catch {
-      showToast('Failed to load history', 'error')
+      showToast('Unable to load modification history. Check your connection and try again.', 'error')
     }
     setHistoryLoading(false)
   }
 
   const handleExportThisPeriod = async () => {
     try {
-      showToast('Preparing export... 📁')
+      showToast('Preparing export…')
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -252,7 +252,7 @@ export default function AttendancePage() {
       })
       if (!res.ok) {
         const err = await res.json()
-        showToast(err.error || 'Export failed', 'error')
+        showToast(err.error || 'Unable to export period attendance. Please try again.', 'error')
         return
       }
       const blob = await res.blob()
@@ -264,9 +264,9 @@ export default function AttendancePage() {
       a.click()
       window.URL.revokeObjectURL(url)
       a.remove()
-      showToast('Period attendance exported! 📁')
+      showToast('Attendance exported')
     } catch {
-      showToast('Export failed', 'error')
+      showToast('Unable to export period attendance. Please try again.', 'error')
     }
   }
 
@@ -296,7 +296,7 @@ export default function AttendancePage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <button onClick={() => router.back()} className="btn btn-ghost btn-icon btn-sm">
+              <button onClick={() => router.back()} className="btn btn-secondary btn-icon btn-sm" aria-label="Go back">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                 </svg>
@@ -315,14 +315,14 @@ export default function AttendancePage() {
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs text-muted ml-8 sm:ml-10 font-sans">
-              <span>📅 {period?.date}</span>
-              <span className="font-mono">🕐 {period?.start_time?.slice(0, 5)} – {period?.end_time?.slice(0, 5)}</span>
-              <span>👨‍🏫 {period?.profiles?.full_name}</span>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted ms-8 sm:ms-10 font-sans">
+              <span>{period?.date}</span>
+              <span className="font-mono">{period?.start_time?.slice(0, 5)} – {period?.end_time?.slice(0, 5)}</span>
+              <span>{period?.profiles?.full_name}</span>
               <span className="badge badge-pill text-[10px]">{period?.period_type}</span>
             </div>
           </div>
-          <div className="flex items-center gap-6 ml-8 sm:ml-0">
+          <div className="flex items-center justify-around sm:justify-end gap-6 w-full sm:w-auto mt-2 sm:mt-0">
             <div className="text-center min-w-[50px]">
               <p className="font-serif text-3xl font-normal text-success-foreground">{presentCount}</p>
               <p className="text-[10px] text-muted uppercase tracking-wider">Present</p>
@@ -341,13 +341,13 @@ export default function AttendancePage() {
 
       {/* Editing Mode Banner */}
       {isEditing && (
-        <div className="mb-5 p-4 rounded-lg bg-surface-card border-l-4 border-l-accent-amber border border-hairline flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+        <div className="mb-5 p-4 rounded-lg bg-surface-card border-s-4 border-s-accent-amber border border-hairline flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
           <div className="flex items-center gap-2.5 text-ink">
             <span className="w-2.5 h-2.5 rounded-full bg-accent-amber animate-pulse" />
             <div>
-              <p className="font-medium text-sm text-ink">Attendance Edit Mode Active</p>
+              <p className="font-medium text-sm text-ink">Editing attendance</p>
               <p className="text-xs text-muted">
-                Click any student card to toggle between Present & Absent. Changes will be saved to the audit trail.
+                Select any student to toggle between present and absent. Changes will be recorded in the audit trail.
               </p>
             </div>
           </div>
@@ -370,17 +370,17 @@ export default function AttendancePage() {
               disabled={isPending}
               className="btn btn-primary btn-sm"
             >
-              {isPending ? 'Saving...' : 'Save All Changes'}
+              {isPending ? 'Saving…' : 'Save all changes'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Action bar (Search + Edit / Submit) */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4 items-stretch sm:items-center">
+      {/* Sticky Action Bar (Search + Edit / Submit) */}
+      <div className="sticky top-14 lg:top-0 z-20 bg-canvas/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-hairline/60 mb-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
         <input
           type="text"
-          placeholder="Search students by name or roll number..."
+          placeholder="Search by name or roll number"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="input flex-1"
@@ -390,7 +390,7 @@ export default function AttendancePage() {
           <button
             onClick={handleSubmit}
             disabled={isPending}
-            className="btn btn-primary btn-lg"
+            className="btn btn-primary btn-lg whitespace-nowrap flex-shrink-0"
           >
             {isPending ? (
               <span className="flex items-center gap-2">
@@ -398,19 +398,19 @@ export default function AttendancePage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Submitting...
+                Submitting…
               </span>
             ) : (
               <>
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Submit Attendance
+                Submit attendance
               </>
             )}
           </button>
         ) : !isEditing ? (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
             <div className="flex items-center gap-1.5 text-xs text-success-foreground font-medium px-3 py-1.5 bg-success-light border border-success/30 rounded-md">
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -425,7 +425,7 @@ export default function AttendancePage() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
               </svg>
-              Edit Attendance
+              Edit attendance
             </button>
             <button
               onClick={handleExportThisPeriod}
@@ -459,7 +459,7 @@ export default function AttendancePage() {
                   openStudentCorrection(attendanceRecord)
                 }
               }}
-              className={`card p-4 transition-all duration-200 select-none cursor-pointer ${
+              className={`attendance-card card p-4 select-none cursor-pointer ${
                 isAbsent
                   ? 'border-danger/40 bg-danger-light/50 hover:border-danger/60'
                   : 'border-success/20 bg-success-light/30 hover:border-success/40'
@@ -468,13 +468,15 @@ export default function AttendancePage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors duration-150 ${
                       isAbsent
                         ? 'bg-danger/10 text-danger'
                         : 'bg-success/10 text-success'
                     }`}
                   >
-                    {isAbsent ? '✗' : '✓'}
+                    <span key={isAbsent ? 'absent' : 'present'} className="attendance-status-icon">
+                      {isAbsent ? '✗' : '✓'}
+                    </span>
                   </div>
                   <div>
                     <p className="font-medium text-foreground">{student.name}</p>
@@ -551,8 +553,20 @@ export default function AttendancePage() {
       </div>
 
       {filteredStudents.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          {searchQuery ? 'No students match your search' : 'No active students in this class'}
+        <div className="text-center py-12">
+          <p className="text-sm text-muted">
+            {searchQuery
+              ? `No students match "${searchQuery}"`
+              : 'No active students in this class'}
+          </p>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="btn btn-secondary btn-sm mt-3"
+            >
+              Clear search
+            </button>
+          )}
         </div>
       )}
 
@@ -560,7 +574,7 @@ export default function AttendancePage() {
       <Modal
         isOpen={!!studentEditModal}
         onClose={() => setStudentEditModal(null)}
-        title={`Edit Attendance — ${studentEditModal?.record.students.name || ''}`}
+        title={`Edit attendance — ${studentEditModal?.record.students.name || ''}`}
       >
         {studentEditModal && (
           <div className="space-y-4">
@@ -569,7 +583,7 @@ export default function AttendancePage() {
                 <p className="font-semibold text-foreground">{studentEditModal.record.students.name}</p>
                 <p className="text-xs text-muted-foreground font-mono">{studentEditModal.record.students.roll_number}</p>
               </div>
-              <div className="text-right text-xs">
+              <div className="text-end text-xs">
                 <p className="text-muted-foreground">Current Status</p>
                 <span className={`badge mt-1 ${studentEditModal.record.status === 'Present' ? 'badge-present' : 'badge-absent'}`}>
                   {studentEditModal.record.status}
@@ -578,7 +592,7 @@ export default function AttendancePage() {
             </div>
 
             <div>
-              <label className="label font-medium mb-1.5 block">Select New Status *</label>
+              <label className="label font-medium mb-1.5 block">Select new status *</label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -606,7 +620,7 @@ export default function AttendancePage() {
             </div>
 
             <div>
-              <label className="label font-medium mb-1.5 block">Reason / Remark (Optional)</label>
+              <label className="label font-medium mb-1.5 block">Reason or remark (optional)</label>
               <textarea
                 value={studentEditModal.remark}
                 onChange={(e) => setStudentEditModal({ ...studentEditModal, remark: e.target.value })}
@@ -633,7 +647,7 @@ export default function AttendancePage() {
                 disabled={isPending}
                 className="btn btn-primary"
               >
-                {isPending ? 'Saving...' : 'Save Correction'}
+                {isPending ? 'Saving…' : 'Save correction'}
               </button>
             </div>
           </div>
@@ -644,7 +658,7 @@ export default function AttendancePage() {
       <Modal
         isOpen={!!historyModal}
         onClose={() => setHistoryModal(null)}
-        title={`Audit History — ${historyModal?.studentName || ''}`}
+        title={`Audit history — ${historyModal?.studentName || ''}`}
       >
         {historyLoading ? (
           <div className="space-y-2">

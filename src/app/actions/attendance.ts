@@ -30,11 +30,14 @@ export async function submitAttendance(
 
   if (studentError || !students) return { error: 'Failed to fetch students' }
 
+  // BN-9: Set lookup is O(1) vs Array.includes which is O(n) per student
+  const absentSet = new Set(absentStudentIds)
+
   // Create attendance records — all present by default, absent for flagged ones
   const records = (students as any[]).map((student: any) => ({
     period_id: periodId,
     student_id: student.id,
-    status: absentStudentIds.includes(student.id) ? 'Absent' : 'Present',
+    status: absentSet.has(student.id) ? 'Absent' : 'Present',
     marked_by: user.id,
   }))
 
@@ -152,45 +155,60 @@ export async function savePeriodAttendanceEdit(
 
   const existingMap = new Map((existing || []).map((e: any) => [e.student_id, e]))
 
-  const updates = []
-  const inserts = []
+  // BN-9: O(1) Set lookup instead of O(n) Array.includes per student
+  const absentSet = new Set(absentStudentIds)
+  const now = new Date().toISOString()
+  const remarkText = batchRemark?.trim() || null
+  const defaultRemark = isAdmin ? 'Updated by admin' : 'Updated by instructor'
+
+  // BN-1: Build one unified upsert payload instead of N individual UPDATE awaits.
+  // Supabase upsert with onConflict handles both inserts and updates in a single
+  // round-trip, eliminating the previous O(n) sequential UPDATE loop.
+  const upsertRows: any[] = []
+  let changedCount = 0
 
   for (const s of students) {
-    const targetStatus = absentStudentIds.includes(s.id) ? 'Absent' : 'Present'
+    const targetStatus = absentSet.has(s.id) ? 'Absent' : 'Present'
     const cur = existingMap.get(s.id)
+
     if (cur) {
+      // Only include rows that actually changed to minimise write amplification
       if (cur.status !== targetStatus) {
-        updates.push({
+        upsertRows.push({
           id: cur.id,
+          period_id: periodId,
+          student_id: s.id,
           status: targetStatus,
+          marked_by: cur.marked_by,
           last_modified_by: user.id,
-          last_modified_at: new Date().toISOString(),
-          remark: batchRemark?.trim() || (isAdmin ? 'Updated by admin' : 'Updated by instructor'),
+          last_modified_at: now,
+          remark: remarkText ?? defaultRemark,
         })
+        changedCount++
       }
     } else {
-      inserts.push({
+      upsertRows.push({
         period_id: periodId,
         student_id: s.id,
         status: targetStatus,
         marked_by: user.id,
-        remark: batchRemark?.trim() || null,
+        remark: remarkText,
       })
+      changedCount++
     }
   }
 
-  for (const u of updates) {
-    await adminClient.from('attendance').update(u).eq('id', u.id)
-  }
-
-  if (inserts.length > 0) {
-    await adminClient.from('attendance').insert(inserts)
+  if (upsertRows.length > 0) {
+    const { error: upsertErr } = await adminClient
+      .from('attendance')
+      .upsert(upsertRows as any, { onConflict: 'period_id,student_id' })
+    if (upsertErr) return { error: upsertErr.message }
   }
 
   revalidatePath(`/dashboard/attendance/${periodId}`)
   revalidatePath('/dashboard/admin/attendance')
   revalidatePath('/dashboard/instructor')
-  return { success: true, updatedCount: updates.length + inserts.length }
+  return { success: true, updatedCount: changedCount }
 }
 
 export async function getAttendanceForPeriod(periodId: number) {
@@ -265,10 +283,10 @@ export async function getStudentsForPeriod(periodId: number) {
 
   if (!period) throw new Error('Period not found')
 
-  // Get active students for that class
+  // BN-2: Select only the columns callers need — avoids over-fetching all columns
   const { data: students, error } = await supabase
     .from('students')
-    .select('*')
+    .select('id, name, roll_number, status, class_id, contact')
     .eq('class_id', (period as any).class_id)
     .eq('status', 'active')
     .order('roll_number')

@@ -96,7 +96,7 @@ export default function InstructorsPage() {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          Add Instructor
+          Add instructor
         </button>
       </div>
 
@@ -111,7 +111,7 @@ export default function InstructorsPage() {
           <EmptyState
             title="No instructors yet"
             description="Add instructors to assign them to daily academic periods."
-            action={<button onClick={() => setShowAddModal(true)} className="btn btn-primary">Add Instructor</button>}
+            action={<button onClick={() => setShowAddModal(true)} className="btn btn-primary">Add instructor</button>}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -121,7 +121,7 @@ export default function InstructorsPage() {
                   <th>Name</th>
                   <th>Contact</th>
                   <th>Status</th>
-                  <th className="text-right">Actions</th>
+                  <th className="text-end">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -142,7 +142,7 @@ export default function InstructorsPage() {
                       </span>
                     </td>
                     <td>
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => setEditingInstructor(inst)}
                           className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-surface-card transition-colors"
@@ -183,7 +183,7 @@ export default function InstructorsPage() {
       </div>
 
       {/* Add Modal */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add New Instructor">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add instructor">
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
             <label className="label">Full Name *</label>
@@ -199,19 +199,19 @@ export default function InstructorsPage() {
           </div>
           <div>
             <label className="label">Contact</label>
-            <input name="contact" className="input" placeholder="Phone number (optional)" />
+            <input name="contact" className="input" placeholder="e.g. +1 555-0144" />
           </div>
           <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
             <button type="button" onClick={() => setShowAddModal(false)} className="btn btn-secondary">Cancel</button>
             <button type="submit" disabled={isPending} className="btn btn-primary">
-              {isPending ? 'Creating...' : 'Create Instructor'}
+              {isPending ? 'Saving...' : 'Create instructor'}
             </button>
           </div>
         </form>
       </Modal>
 
       {/* Edit Modal */}
-      <Modal isOpen={!!editingInstructor} onClose={() => setEditingInstructor(null)} title="Edit Instructor">
+      <Modal isOpen={!!editingInstructor} onClose={() => setEditingInstructor(null)} title="Edit instructor">
         {editingInstructor && (
           <form onSubmit={handleUpdate} className="space-y-4">
             <div>
@@ -225,7 +225,7 @@ export default function InstructorsPage() {
             <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
               <button type="button" onClick={() => setEditingInstructor(null)} className="btn btn-secondary">Cancel</button>
               <button type="submit" disabled={isPending} className="btn btn-primary">
-                {isPending ? 'Saving...' : 'Update'}
+                {isPending ? 'Saving...' : 'Save changes'}
               </button>
             </div>
           </form>

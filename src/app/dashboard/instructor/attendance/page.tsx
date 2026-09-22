@@ -82,7 +82,7 @@ export default function InstructorAttendancePage() {
 
       {/* Filters */}
       <div className="card p-4">
-        <div className="flex flex-col sm:flex-row gap-4 items-center">
+        <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <label className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
               Date:
@@ -127,6 +127,17 @@ export default function InstructorAttendancePage() {
         <EmptyState
           title="No periods found"
           description={`No periods scheduled for ${date}${selectedClass ? '' : ' across any class'}.`}
+          action={
+            <button
+              onClick={() => {
+                setDate(new Date().toISOString().split('T')[0])
+                setSelectedClass('')
+              }}
+              className="btn btn-secondary btn-sm"
+            >
+              View today&apos;s schedule
+            </button>
+          }
         />
       ) : (
         <div className="space-y-3 stagger-children">

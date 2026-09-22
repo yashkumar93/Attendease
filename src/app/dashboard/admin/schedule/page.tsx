@@ -110,7 +110,7 @@ export default function SchedulePage() {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          Add Period
+          Add period
         </button>
       </div>
 
@@ -183,42 +183,54 @@ export default function SchedulePage() {
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                       </svg>
-                      Add Period
+                      Add period
                     </button>
                   </div>
                 </div>
                 {classPeriods.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-muted">
-                    No periods scheduled for this cohort yet.
+                  <div className="p-8 text-center">
+                    <p className="text-sm text-muted">No periods scheduled for this cohort yet.</p>
+                    <button
+                      onClick={() => { setAddForClass(cls.id); setShowAddModal(true) }}
+                      className="btn btn-secondary btn-sm mt-3"
+                    >
+                      Add period
+                    </button>
                   </div>
                 ) : (
                   <div className="divide-y divide-hairline">
                     {classPeriods.map((period, index) => (
-                      <div key={period.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-soft/40 transition-colors">
-                        <div className="flex items-center gap-2.5 w-52 flex-shrink-0">
+                      <div key={period.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3.5 hover:bg-surface-soft/40 transition-colors">
+                        <div className="flex items-center gap-3">
                           <span className="badge badge-pill text-xs font-mono font-medium bg-surface-cream-strong text-ink">
                             P{index + 1}
                           </span>
                           <span className="text-xs font-mono text-muted">
                             {period.start_time.slice(0, 5)} – {period.end_time.slice(0, 5)}
                           </span>
+                          <span className="badge badge-pill text-[10px] sm:hidden">
+                            {period.period_type}
+                          </span>
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 sm:ms-2">
                           <p className="font-medium text-sm text-ink">{period.subjects?.subject_name}</p>
                           <p className="text-xs text-muted">{period.profiles?.full_name}</p>
                         </div>
-                        <span className="badge badge-pill text-[10px]">
-                          {period.period_type}
-                        </span>
-                        <button
-                          onClick={() => setDeletingPeriod(period)}
-                          className="p-1.5 rounded-md text-muted-soft hover:text-danger hover:bg-danger-light transition-colors"
-                          title="Delete period"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                          </svg>
-                        </button>
+                        <div className="flex items-center gap-3 self-end sm:self-center">
+                          <span className="badge badge-pill text-[10px] hidden sm:inline-flex">
+                            {period.period_type}
+                          </span>
+                          <button
+                            onClick={() => setDeletingPeriod(period)}
+                            className="p-1.5 rounded-md text-muted-soft hover:text-danger hover:bg-danger-light transition-colors"
+                            title="Delete period"
+                            aria-label="Delete period"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -233,7 +245,7 @@ export default function SchedulePage() {
       <Modal
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false); setAddForClass(null) }}
-        title="Add Period to Schedule"
+        title="Add period to schedule"
       >
         <form onSubmit={handleAddPeriod} className="space-y-4">
           {!addForClass && (
@@ -298,7 +310,7 @@ export default function SchedulePage() {
               Cancel
             </button>
             <button type="submit" disabled={isPending} className="btn btn-primary">
-              {isPending ? 'Adding...' : 'Add Period'}
+              {isPending ? 'Adding period…' : 'Add period'}
             </button>
           </div>
         </form>
@@ -309,9 +321,9 @@ export default function SchedulePage() {
         isOpen={!!deletingPeriod}
         onClose={() => setDeletingPeriod(null)}
         onConfirm={handleDelete}
-        title="Delete Period"
+        title="Delete period"
         message={`Delete this period (${deletingPeriod?.subjects?.subject_name} at ${deletingPeriod?.start_time.slice(0, 5)})? Any attendance marked for this period will also be deleted.`}
-        confirmLabel="Delete Period"
+        confirmLabel="Delete period"
         loading={isPending}
       />
     </div>

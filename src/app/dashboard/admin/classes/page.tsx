@@ -16,14 +16,14 @@ export default async function ClassesPage() {
           <div className="flex items-center gap-2 mb-1">
             <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
             <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Cohorts & Sections
+              Classes
             </span>
           </div>
           <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
             Classes
           </h1>
           <p className="text-sm text-muted mt-1 font-sans">
-            7 fixed academic cohorts configured for the institution
+            7 fixed academic classes configured for the institution
           </p>
         </div>
       </div>
@@ -40,7 +40,7 @@ export default async function ClassesPage() {
                 <div>
                   <h3 className="font-serif text-lg font-normal text-ink">{cls.class_name}</h3>
                   <p className="text-xs text-muted font-mono">
-                    {studentCount} student{studentCount !== 1 ? 's' : ''}
+                    {studentCount === 1 ? '1 student' : `${studentCount} students`}
                   </p>
                 </div>
               </div>
@@ -49,13 +49,13 @@ export default async function ClassesPage() {
                   href={`/dashboard/admin/students?class=${cls.id}`}
                   className="btn btn-secondary btn-sm flex-1 text-xs"
                 >
-                  View Students
+                  View students
                 </a>
                 <a
                   href={`/dashboard/admin/schedule?class=${cls.id}`}
                   className="btn btn-secondary btn-sm flex-1 text-xs"
                 >
-                  Schedule
+                  View schedule
                 </a>
               </div>
             </div>

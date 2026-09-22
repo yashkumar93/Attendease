@@ -13,7 +13,13 @@ function googleErrMsg(err: unknown): string {
   return String(err)
 }
 
-function getGoogleClients() {
+// BN-8: Module-level cache for Google auth clients.
+// GoogleAuth performs private-key parsing on construction — doing this on
+// every export call is wasteful. The auth object is stateless and thread-safe,
+// so we create it once and reuse across all calls in this module's lifetime.
+let _cachedGoogleClients: ReturnType<typeof _buildGoogleClients> | null = null
+
+function _buildGoogleClients() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
   const rawKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
 
@@ -41,6 +47,13 @@ function getGoogleClients() {
   const drive = google.drive({ version: 'v3', auth })
 
   return { sheets, drive, auth }
+}
+
+function getGoogleClients() {
+  if (!_cachedGoogleClients) {
+    _cachedGoogleClients = _buildGoogleClients()
+  }
+  return _cachedGoogleClients
 }
 
 export interface AttendanceRow {

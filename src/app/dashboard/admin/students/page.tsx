@@ -123,7 +123,7 @@ export default function StudentsPage() {
         })
       },
       error: () => {
-        showToast('Failed to parse CSV file', 'error')
+        showToast('Unable to parse CSV file. Ensure columns match: name, roll_number, class_id.', 'error')
       },
     })
   }
@@ -149,14 +149,14 @@ export default function StudentsPage() {
       </div>
       <div>
         <label className="label">Contact</label>
-        <input name="contact" defaultValue={student?.contact || ''} className="input" placeholder="Phone or email (optional)" />
+        <input name="contact" defaultValue={student?.contact || ''} className="input" placeholder="e.g. +1 555-0199" />
       </div>
       <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
         <button type="button" onClick={() => { setShowAddModal(false); setEditingStudent(null) }} className="btn btn-secondary">
           Cancel
         </button>
         <button type="submit" disabled={isPending} className="btn btn-primary">
-          {isPending ? 'Saving...' : student ? 'Update' : 'Add Student'}
+          {isPending ? 'Saving...' : student ? 'Save changes' : 'Add student'}
         </button>
       </div>
     </form>
@@ -191,7 +191,7 @@ export default function StudentsPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            Add Student
+            Add student
           </button>
         </div>
       </div>
@@ -201,7 +201,7 @@ export default function StudentsPage() {
         <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
-            placeholder="Search by name or roll number..."
+            placeholder="Search by name or roll number"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input flex-1"
@@ -240,14 +240,22 @@ export default function StudentsPage() {
           </div>
         ) : filteredStudents.length === 0 ? (
           <EmptyState
-            title="No students found"
-            description={searchQuery ? 'Try a different search query' : 'Add your first student to get started.'}
+            title={searchQuery ? `No students matching "${searchQuery}"` : 'No students yet'}
+            description={
+              searchQuery
+                ? 'Check the name or roll number for typos, or clear your search query.'
+                : 'Add students to enroll them in cohorts and record attendance.'
+            }
             action={
-              !searchQuery ? (
-                <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
-                  Add Student
+              searchQuery ? (
+                <button onClick={() => setSearchQuery('')} className="btn btn-secondary">
+                  Clear search
                 </button>
-              ) : undefined
+              ) : (
+                <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
+                  Add student
+                </button>
+              )
             }
           />
         ) : (
@@ -260,7 +268,7 @@ export default function StudentsPage() {
                   <th>Class</th>
                   <th>Contact</th>
                   <th>Status</th>
-                  <th className="text-right">Actions</th>
+                  <th className="text-end">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -276,7 +284,7 @@ export default function StudentsPage() {
                       </span>
                     </td>
                     <td>
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => setEditingStudent(student)}
                           className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-surface-card transition-colors"
@@ -322,17 +330,17 @@ export default function StudentsPage() {
       </div>
 
       {/* Add Modal */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add New Student">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add student">
         <StudentForm onSubmit={handleAddStudent} />
       </Modal>
 
       {/* Edit Modal */}
-      <Modal isOpen={!!editingStudent} onClose={() => setEditingStudent(null)} title="Edit Student">
+      <Modal isOpen={!!editingStudent} onClose={() => setEditingStudent(null)} title="Edit student">
         {editingStudent && <StudentForm student={editingStudent} onSubmit={handleUpdateStudent} />}
       </Modal>
 
       {/* Import Modal */}
-      <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Import Students from CSV">
+      <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Import students from CSV">
         <div className="space-y-4">
           <p className="text-sm text-muted">
             Upload a CSV file with the following columns: <code className="px-1.5 py-0.5 bg-surface-card border border-hairline rounded text-xs font-mono">name</code>, <code className="px-1.5 py-0.5 bg-surface-card border border-hairline rounded text-xs font-mono">roll_number</code>, <code className="px-1.5 py-0.5 bg-surface-card border border-hairline rounded text-xs font-mono">class_id</code>, <code className="px-1.5 py-0.5 bg-surface-card border border-hairline rounded text-xs font-mono">contact</code> (optional)
@@ -349,7 +357,7 @@ export default function StudentsPage() {
               <svg className="w-8 h-8 mx-auto text-muted-soft mb-2" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
               </svg>
-              <p className="text-sm font-medium text-ink">Click to upload CSV</p>
+              <p className="text-sm font-medium text-ink">Choose CSV file</p>
               <p className="text-xs text-muted mt-1">or drag and drop</p>
             </label>
           </div>

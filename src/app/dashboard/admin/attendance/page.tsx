@@ -81,7 +81,7 @@ export default function AdminAttendancePage() {
 
       {/* Filters */}
       <div className="card p-4">
-        <div className="flex flex-col sm:flex-row gap-4 items-center">
+        <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <label className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
               Date:

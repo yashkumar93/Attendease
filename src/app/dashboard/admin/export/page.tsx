@@ -77,7 +77,7 @@ export default function ExportPage() {
 
   const validate = () => {
     if (scopeType === 'date_range' && (!dateFrom || !dateTo)) {
-      showToast('Please select both start and end dates', 'error')
+      showToast('Select both a start and end date to continue.', 'error')
       return false
     }
     return true
@@ -94,7 +94,7 @@ export default function ExportPage() {
       })
       if (!res.ok) {
         const err = await res.json()
-        showToast(err.error || 'Export failed', 'error')
+        showToast(err.error || 'Unable to download CSV. Please try again.', 'error')
         return
       }
       const blob = await res.blob()
@@ -111,10 +111,10 @@ export default function ExportPage() {
       a.click()
       window.URL.revokeObjectURL(url)
       a.remove()
-      showToast('CSV downloaded successfully! 📁')
+      showToast('CSV downloaded')
       fetchLogs()
     } catch {
-      showToast('Export failed', 'error')
+      showToast('Unable to download CSV. Please try again.', 'error')
     } finally {
       setLoading(null)
     }
@@ -131,14 +131,14 @@ export default function ExportPage() {
       })
       const json = await res.json()
       if (!res.ok) {
-        showToast(json.error || 'Google Sheets export failed', 'error')
+        showToast(json.error || 'Unable to export to Google Sheets. Verify your Google credentials and try again.', 'error')
         return
       }
       window.open(json.url, '_blank')
-      showToast('Google Sheet created and shared with you! 🎉')
+      showToast('Google Sheet created')
       fetchLogs()
     } catch {
-      showToast('Google Sheets export failed', 'error')
+      showToast('Unable to export to Google Sheets. Verify your Google credentials and try again.', 'error')
     } finally {
       setLoading(null)
     }
@@ -189,25 +189,25 @@ export default function ExportPage() {
           </div>
 
           {/* Date inputs */}
-          <div className="flex flex-col sm:flex-row gap-4 flex-wrap items-start">
+          <div className="flex flex-col sm:flex-row gap-4 flex-wrap items-stretch sm:items-start">
             {scopeType === 'single_date' ? (
               <>
-                <div>
+                <div className="w-full sm:w-auto">
                   <label className="label">Date</label>
                   <input
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="input w-48"
+                    className="input w-full sm:w-48"
                   />
                 </div>
-                <div>
+                <div className="w-full sm:w-auto">
                   <label className="label">Period (optional)</label>
                   <select
                     value={periodId}
                     onChange={(e) => setPeriodId(e.target.value ? parseInt(e.target.value) : '')}
                     disabled={periodsLoading}
-                    className="input w-72"
+                    className="input w-full sm:w-72"
                   >
                     <option value="">All Periods (Entire Day)</option>
                     {availablePeriods.map((p) => (
@@ -223,24 +223,24 @@ export default function ExportPage() {
               </>
             ) : (
               <>
-                <div>
+                <div className="w-full sm:w-auto">
                   <label className="label">From</label>
-                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input w-48" />
+                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input w-full sm:w-48" />
                 </div>
-                <div>
+                <div className="w-full sm:w-auto">
                   <label className="label">To</label>
-                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input w-48" />
+                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input w-full sm:w-48" />
                 </div>
               </>
             )}
 
             {classes.length > 1 && (
-              <div>
+              <div className="w-full sm:w-auto">
                 <label className="label">Class (optional)</label>
                 <select
                   value={classId}
                   onChange={(e) => setClassId(e.target.value ? parseInt(e.target.value) : '')}
-                  className="input w-48"
+                  className="input w-full sm:w-48"
                 >
                   <option value="">All Classes</option>
                   {classes.map((c) => (
@@ -308,7 +308,7 @@ export default function ExportPage() {
           <div className="rounded-lg border border-hairline bg-surface-soft p-4 text-xs text-muted leading-relaxed flex items-start gap-2.5">
             <AnthropicSpikeMark className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
             <div>
-              <strong className="text-ink">Google Sheets Export</strong> publishes an organized spreadsheet with styled columns, student rosters, and color-coded status highlights directly shared with your authenticated Google service account.
+              <strong className="text-ink">Google Sheets Export</strong> publishes an organized spreadsheet with styled columns, student rosters, and color-coded status highlights shared with the authenticated Google service account.
             </div>
           </div>
         </div>
@@ -317,7 +317,7 @@ export default function ExportPage() {
       {/* Export history */}
       <div className="card overflow-hidden">
         <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between bg-surface-soft">
-          <h2 className="font-serif text-lg font-normal text-ink">Export History</h2>
+          <h2 className="font-serif text-lg font-normal text-ink">Export history</h2>
           <span className="text-xs text-muted font-mono">{exportLogs.length} recent exports</span>
         </div>
         {logsLoading ? (

@@ -2,20 +2,10 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-
-// Fixed daily period timings (Mon–Sat)
-const PERIOD_TIMINGS = [
-  { period_number: 1, start_time: '09:20', end_time: '10:10' },
-  { period_number: 2, start_time: '10:10', end_time: '11:00' },
-  { period_number: 3, start_time: '11:00', end_time: '11:50' },
-  { period_number: 4, start_time: '11:50', end_time: '12:40' },
-  { period_number: 5, start_time: '13:30', end_time: '14:20' },
-  { period_number: 6, start_time: '14:20', end_time: '15:10' },
-  { period_number: 7, start_time: '15:10', end_time: '16:00' },
-]
-
-// Days on which to auto-create (0=Sun, 1=Mon, ..., 6=Sat)
-const ACTIVE_DAYS = [1, 2, 3, 4, 5, 6] // Mon–Sat
+// BN-14: Import from the canonical shared config instead of re-declaring locally.
+// Previously this file had its own copy of PERIOD_TIMINGS which could silently
+// diverge from the source of truth in period-config.ts.
+import { PERIOD_TIMINGS, ACTIVE_DAYS } from '@/lib/period-config'
 
 /**
  * Ensures 7 period slots exist for a given date and all classes.
@@ -54,22 +44,31 @@ export async function ensureDailyPeriods(targetDate?: string) {
     return { error: 'No active admin found to set as created_by' }
   }
 
+  // BN-12: Single query to get ALL class IDs that already have periods for this
+  // date — replaces the old per-class SELECT count(*) inside a loop
+  // (previously N round-trips, now just 1).
+  const { data: existingPeriods, error: existErr } = await adminClient
+    .from('periods')
+    .select('class_id')
+    .eq('date', dateStr)
+
+  if (existErr) {
+    return { error: `Failed to check existing periods: ${existErr.message}` }
+  }
+
+  const classesWithPeriods = new Set(
+    (existingPeriods || []).map((p: any) => p.class_id)
+  )
+
   let totalCreated = 0
 
   for (const cls of classes) {
-    // Check if periods already exist for this date + class
-    const { count } = await adminClient
-      .from('periods')
-      .select('*', { count: 'exact', head: true })
-      .eq('date', dateStr)
-      .eq('class_id', cls.id)
-
-    if (count && count > 0) {
-      // Periods already exist for this class on this date, skip
+    // Skip classes that already have periods today (O(1) Set lookup)
+    if (classesWithPeriods.has(cls.id)) {
       continue
     }
 
-    // Create 7 periods
+    // Create 7 periods for this class
     const periods = PERIOD_TIMINGS.map((timing) => ({
       date: dateStr,
       class_id: cls.id,

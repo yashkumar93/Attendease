@@ -32,7 +32,7 @@ export default function LoginPage() {
       router.push('/dashboard')
       router.refresh()
     } catch {
-      setError('An unexpected error occurred')
+      setError('Unable to sign in. Check your email and password, then try again.')
     } finally {
       setLoading(false)
     }
@@ -42,8 +42,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-canvas">
       {/* Subtle warm ambient atmosphere */}
       <div className="absolute inset-0 bg-canvas" />
-      <div className="absolute top-0 right-1/4 w-[520px] h-[520px] rounded-full bg-surface-soft/80 blur-3xl -translate-y-1/2 pointer-events-none" />
-      <div className="absolute bottom-0 left-1/4 w-[500px] h-[500px] rounded-full bg-surface-cream-strong/40 blur-3xl translate-y-1/3 pointer-events-none" />
+      <div className="absolute top-0 end-1/4 w-[520px] h-[520px] rounded-full bg-surface-soft/80 blur-3xl -translate-y-1/2 pointer-events-none" />
+      <div className="absolute bottom-0 start-1/4 w-[500px] h-[500px] rounded-full bg-surface-cream-strong/40 blur-3xl translate-y-1/3 pointer-events-none" />
 
       {/* Login Card */}
       <div className="relative z-10 w-full max-w-md mx-4 animate-fade-in-up">
@@ -75,7 +75,7 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label htmlFor="email" className="label text-body-strong">
-                Email Address
+                Email address
               </label>
               <input
                 id="email"
@@ -117,17 +117,17 @@ export default function LoginPage() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    Signing in...
+                    Signing in…
                   </span>
                 ) : (
-                  'Sign In'
+                  'Sign in'
                 )}
               </button>
             </div>
           </form>
 
           <p className="text-center text-xs text-muted-soft mt-8">
-            Contact your administrator for institutional login credentials
+            Contact the administrator for institutional login credentials
           </p>
         </div>
       </div>

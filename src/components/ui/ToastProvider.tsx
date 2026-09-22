@@ -8,6 +8,7 @@ interface Toast {
   id: number
   message: string
   type: ToastType
+  isExiting?: boolean
 }
 
 interface ToastContextValue {
@@ -25,41 +26,52 @@ export function useToast() {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
 
-  const showToast = useCallback((message: string, type: ToastType = 'success') => {
-    const id = Date.now()
-    setToasts((prev) => [...prev, { id, message, type }])
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, isExiting: true } : t))
+    )
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 4000)
+    }, 160)
   }, [])
+
+  const showToast = useCallback((message: string, type: ToastType = 'success') => {
+    const id = Date.now()
+    setToasts((prev) => [...prev, { id, message, type, isExiting: false }])
+    setTimeout(() => {
+      dismissToast(id)
+    }, 3800)
+  }, [dismissToast])
 
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      {/* Toast container */}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+      {/* Toast container — positioned top-end with safe area to avoid blocking chat FAB and panel */}
+      <div className="fixed top-4 end-4 z-[100] flex flex-col gap-2 pointer-events-none pt-[env(safe-area-inset-top,0)]">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`toast toast-${toast.type}`}
-            onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+            className={`toast toast-${toast.type} pointer-events-auto ${toast.isExiting ? 'toast-exit' : ''}`}
+            onClick={() => dismissToast(toast.id)}
+            role="status"
+            aria-live="polite"
           >
             {toast.type === 'success' && (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             )}
             {toast.type === 'error' && (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
             )}
             {toast.type === 'info' && (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
               </svg>
             )}
-            <span>{toast.message}</span>
+            <span className="text-sm">{toast.message}</span>
           </div>
         ))}
       </div>

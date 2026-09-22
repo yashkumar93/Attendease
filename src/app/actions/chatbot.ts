@@ -8,6 +8,28 @@ import { getCurrentPeriod } from '@/lib/period-config'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import Groq from 'groq-sdk'
 
+// BN-7: Module-level lazy singletons — clients are stateless and safe to reuse.
+// Previously they were constructed on every call (twice per request: once for
+// intent analysis and once for conversational response).
+let _geminiClient: GoogleGenerativeAI | null = null
+let _groqClient: Groq | null = null
+
+function getGeminiClient(): GoogleGenerativeAI | null {
+  if (!process.env.GEMINI_API_KEY) return null
+  if (!_geminiClient) {
+    _geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  }
+  return _geminiClient
+}
+
+function getGroqClient(): Groq | null {
+  if (!process.env.GROQ_API_KEY) return null
+  if (!_groqClient) {
+    _groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY })
+  }
+  return _groqClient
+}
+
 export interface ChatbotResult {
   success: boolean
   message: string
@@ -42,24 +64,30 @@ function releaseLock() {
   lockTimestamp = 0
 }
 
+// BN-5/6: Tracks whether the background after() task has been scheduled.
+// When true, the background task owns the lock and releases it in its finally.
+// When false, the outer finally block releases it instead.
+let _backgroundScheduled = false
+
+
 /**
  * Generates the formatting guide message.
  */
 export async function getFormatGuide(currentPeriodNum?: number | null): Promise<string> {
   return (
-    `📋 **Quick Mark Attendance Guide**\n\n` +
+    `**Quick Mark Attendance Guide**\n\n` +
     `You can mark attendance in any of the following ways:\n\n` +
-    `1️⃣ **Click a Period Button:**\n` +
+    `1. **Select a period button:**\n` +
     `Select any period above, then enter absent student names or roll numbers.\n\n` +
-    `2️⃣ **Conversational / Direct Command:**\n` +
+    `2. **Conversational or direct command:**\n` +
     `• \`Period 3 - Rahul, Vicky\` _(marks them absent for Period 3)_\n` +
     `• \`Mark John and Jane present for P2\` _(marks everyone else absent)_\n` +
     `• \`Everyone is present today in period 1\` _(marks everyone present)_\n` +
     `• \`3: 101, 104\` _(using roll numbers)_\n\n` +
     (currentPeriodNum
-      ? `🕒 *Current active period:* **Period ${currentPeriodNum}**.\n\n`
+      ? `*Current active period:* **Period ${currentPeriodNum}**.\n\n`
       : '') +
-    `💡 *Note:* All instructors have access to mark attendance for any class period. If attendance is already marked for a period, please update it via the dashboard.`
+    `*Note:* You can mark attendance as many times as needed. If attendance is already marked for a period, sending a new command will **update** it and log the change in the audit trail.`
   )
 }
 
@@ -113,33 +141,33 @@ Respond strictly with a JSON object (no markdown, no formatting) matching this s
 }
 `
 
-  // 1. Try Gemini (gemini-1.5-flash-8b)
-  if (process.env.GEMINI_API_KEY) {
+  // 1. Try Gemini (gemini-1.5-flash-8b) — reuse singleton client (BN-7)
+  const gemini = getGeminiClient()
+  if (gemini) {
     try {
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" })
+      const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash-8b' })
       const result = await model.generateContent(prompt)
-      const text = result.response.text().replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim()
+      const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim()
       return JSON.parse(text) as GeminiIntent
     } catch (error) {
-      console.error("Gemini analysis failed, falling back to Groq:", error)
+      console.error('Gemini analysis failed, falling back to Groq:', error)
     }
   }
 
-  // 2. Try Groq (llama3-8b-8192)
-  if (process.env.GROQ_API_KEY) {
+  // 2. Try Groq (llama3-8b-8192) — reuse singleton client (BN-7)
+  const groq = getGroqClient()
+  if (groq) {
     try {
-      const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
       const completion = await groq.chat.completions.create({
-        messages: [{ role: "user", content: prompt }],
-        model: "llama3-8b-8192",
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama3-8b-8192',
         temperature: 0,
-        response_format: { type: "json_object" },
+        response_format: { type: 'json_object' },
       })
-      const text = completion.choices[0]?.message?.content || "{}"
+      const text = completion.choices[0]?.message?.content || '{}'
       return JSON.parse(text) as GeminiIntent
     } catch (error) {
-      console.error("Groq analysis failed, falling back to regex:", error)
+      console.error('Groq analysis failed, falling back to regex:', error)
     }
   }
 
@@ -159,8 +187,10 @@ export async function processAttendanceMessage(
   message: string,
   explicitPeriodNumber?: number
 ): Promise<ChatbotResult> {
-  const fail = (msg: string, isHelp = false): ChatbotResult => {
-    releaseLock()
+  // BN-5/6: skipRelease flag lets us avoid double-release when the lock was
+  // never acquired (e.g., concurrent-rejection fast path).
+  const fail = (msg: string, isHelp = false, releaseLockOnReturn = true): ChatbotResult => {
+    if (releaseLockOnReturn) releaseLock()
     return {
       success: false,
       message: msg,
@@ -173,10 +203,14 @@ export async function processAttendanceMessage(
     }
   }
 
-  // ── 0. Concurrency Lock ──────────────────────────────────────
+  // BN-5/6: Acquire the lock before entering the try block. The finally clause
+  // guarantees releaseLock() runs on ALL non-background exit paths, even on
+  // unexpected throws from auth/DB calls.
   if (!acquireLock()) {
     return fail(
-      '⏳ Another attendance request is currently being processed. Only one request is served at a time. Please wait a moment and try again.'
+      '⏳ Another attendance request is currently being processed. Only one request is served at a time. Please wait a moment and try again.',
+      false,
+      false /* skipRelease — lock was never acquired */
     )
   }
 
@@ -228,8 +262,8 @@ export async function processAttendanceMessage(
         const guide = await getFormatGuide(null)
         return fail(
           'Could not determine which period to mark attendance for.\n\n' +
-            guide +
-            '\n\n👉 **Please select a period button above or type the period number (e.g. `Period 1 - ...`)**',
+          guide +
+          '\n\n**Select a period button above or enter the period number (e.g. `Period 1 - ...`).**',
           true
         )
       }
@@ -252,7 +286,7 @@ export async function processAttendanceMessage(
     if (periodErr || !periods || periods.length === 0) {
       return fail(
         `No Period ${parsed.periodNumber} schedule found for today (${today}).\n` +
-          'Please ensure today\'s daily schedule has been generated.'
+        'Please ensure today\'s daily schedule has been generated.'
       )
     }
 
@@ -261,18 +295,13 @@ export async function processAttendanceMessage(
     const periodLabel = `Period ${parsed.periodNumber} (${period.start_time?.slice(0, 5)}–${period.end_time?.slice(0, 5)})`
     const className = period.classes?.class_name || 'Class 1'
 
-    // ── 5. Check if Attendance is Already Marked ─────────────────
+    // ── 5. Check if Attendance is Already Marked (for update tracking) ─────
     const { count: attendanceCount } = await adminClient
       .from('attendance')
       .select('*', { count: 'exact', head: true })
       .eq('period_id', period.id)
 
-    if (attendanceCount && attendanceCount > 0) {
-      return fail(
-        `⚠️ Attendance for **Period ${parsed.periodNumber}** has already been marked today.\n\n` +
-          `To prevent accidental overrides, please navigate to the dashboard to manually update or edit it if changes are needed.`
-      )
-    }
+    const isUpdate = !!(attendanceCount && attendanceCount > 0)
 
     // ── 6. Fetch Active Students for the Class ───────────────────
     const { data: students, error: studentErr } = await adminClient
@@ -295,11 +324,11 @@ export async function processAttendanceMessage(
 
     // Logic: If user specified present list ONLY, everyone else is absent
     if (parsed.presentNames.length > 0 && parsed.absentNames.length === 0) {
-      const presentIds: number[] = []
+      const presentIdSet = new Set<number>() // BN-10: Set for O(1) lookup below
       for (const inputName of parsed.presentNames) {
         const match = matchStudent(inputName, students)
         if (match.type === 'exact') {
-          presentIds.push(match.student!.id)
+          presentIdSet.add(match.student!.id)
           matchedPresent.push(match.student!.name)
         } else if (match.type === 'ambiguous') {
           ambiguous.push({
@@ -311,9 +340,9 @@ export async function processAttendanceMessage(
         }
       }
 
-      // Mark everyone NOT in presentIds as absent
+      // BN-10: O(1) Set.has instead of O(n) Array.includes per student
       for (const s of students) {
-        if (!presentIds.includes(s.id)) {
+        if (!presentIdSet.has(s.id)) {
           absentIds.push(s.id)
         }
       }
@@ -341,11 +370,14 @@ export async function processAttendanceMessage(
         .map((a) => `• **"${a.input}"** — did you mean: ${a.suggestions.join(', ')}?`)
         .join('\n')
 
+      // BN-5/6: Release lock on this early-return path (not background-scheduled)
+      releaseLock()
+      _backgroundScheduled = true // prevent double-release in finally
       return {
         success: false,
         message:
           `Some student names match multiple people. Please use the full name or roll number:\n\n${ambigLines}\n\n` +
-          (matchedAbsent.length > 0 ? `✅ Matched so far: ${matchedAbsent.join(', ')}` : ''),
+          (matchedAbsent.length > 0 ? `Matched so far: ${matchedAbsent.join(', ')}` : ''),
         matched: matchedAbsent,
         unmatched,
         ambiguous,
@@ -358,15 +390,24 @@ export async function processAttendanceMessage(
     // ── 8. Prepare Attendance Records ───────────────────────────
     const totalAbsent = absentIds.length
     const totalPresent = students.length - totalAbsent
+    const now = new Date().toISOString()
+    // BN-9: Set for O(1) membership check inside .map
+    const absentIdSet = new Set(absentIds)
 
     const records = students.map((s: any) => ({
       period_id: period.id,
       student_id: s.id,
-      status: absentIds.includes(s.id) ? 'Absent' : 'Present',
+      status: absentIdSet.has(s.id) ? 'Absent' : 'Present',
       marked_by: user.id,
+      ...(isUpdate
+        ? { last_modified_by: user.id, last_modified_at: now }
+        : {}),
     }))
 
     // ── 9. Execute Database Upsert in Background ─────────────────
+    // BN-5/6: Mark the flag BEFORE calling after() so the finally block
+    // skips its releaseLock() — the background task's own finally owns it.
+    _backgroundScheduled = true
     after(async () => {
       try {
         const { error: upsertErr } = await adminClient
@@ -384,21 +425,25 @@ export async function processAttendanceMessage(
     })
 
     // ── 10. Instant Response to User (Conversational) ──────────────
-    let baseMsg = `✅ **${periodLabel}** — ${className}\n\n`
-    baseMsg += `👥 **${totalPresent}** present · **${totalAbsent}** absent (out of ${students.length})`
+    const actionLabel = isUpdate ? 'Updated' : 'Marked'
+    let baseMsg = `${actionLabel} **${periodLabel}** — ${className}\n\n`
+    baseMsg += `**${totalPresent}** present · **${totalAbsent}** absent of ${students.length}`
+    if (isUpdate) {
+      baseMsg += `\n\n_(Attendance updated — changes logged in audit trail)_`
+    }
 
     if (matchedAbsent.length > 0) {
-      baseMsg += `\n\n❌ **Absent:** ${matchedAbsent.join(', ')}`
+      baseMsg += `\n\n**Absent:** ${matchedAbsent.join(', ')}`
     } else if (matchedPresent.length > 0 && parsed.absentNames.length === 0) {
-      baseMsg += `\n\n✅ **Present List Marked:** ${matchedPresent.join(', ')}`
+      baseMsg += `\n\n**Present list marked:** ${matchedPresent.join(', ')}`
     }
-    
+
     if (unmatched.length > 0) {
-      baseMsg += `\n\n⚠️ **Could not find:** ${unmatched.join(', ')}`
+      baseMsg += `\n\n**Could not find:** ${unmatched.join(', ')}`
     }
 
     if (totalAbsent === 0) {
-      baseMsg += '\n\n🎉 **All students marked present!**'
+      baseMsg += '\n\n**All students marked present.**'
     }
 
     let finalMsg = baseMsg;
@@ -407,39 +452,43 @@ export async function processAttendanceMessage(
     if (unmatched.length === 0) {
       const chatPrompt = `
 You are a friendly, conversational AI assistant for a school attendance system.
-You just marked attendance. Rewrite the following status message to be warm, natural, and conversational, while keeping all the factual info (Period, Class, Present count, Absent count, and names). Keep the emojis. Do not add markdown code blocks. Keep it concise.
+You just ${isUpdate ? 'updated' : 'marked'} attendance. Rewrite the following status message to be warm, natural, and conversational, while keeping all the factual info (Period, Class, Present count, Absent count, and names). Do not add markdown code blocks. Keep it concise.${isUpdate ? ' Mention that this was an update/correction and changes are saved.' : ''}
 
 Status message:
 ${baseMsg}
 `
-      let aiResponse = "";
-      if (process.env.GEMINI_API_KEY) {
+      let aiResponse = ''
+
+      // BN-7: Reuse singleton clients instead of constructing new instances
+      const gemini = getGeminiClient()
+      if (gemini) {
         try {
-          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" })
+          const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash-8b' })
           const chatResult = await model.generateContent(chatPrompt)
           aiResponse = chatResult.response.text().trim()
-        } catch(e) {
-          console.error("Gemini conversational generation failed", e)
+        } catch (e) {
+          console.error('Gemini conversational generation failed', e)
         }
       }
 
-      if (!aiResponse && process.env.GROQ_API_KEY) {
-        try {
-          const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-          const completion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: chatPrompt }],
-            model: "llama3-8b-8192",
-            temperature: 0.7,
-          })
-          aiResponse = completion.choices[0]?.message?.content?.trim() || ""
-        } catch(e) {
-          console.error("Groq conversational generation failed", e)
+      if (!aiResponse) {
+        const groq = getGroqClient()
+        if (groq) {
+          try {
+            const completion = await groq.chat.completions.create({
+              messages: [{ role: 'user', content: chatPrompt }],
+              model: 'llama3-8b-8192',
+              temperature: 0.7,
+            })
+            aiResponse = completion.choices[0]?.message?.content?.trim() || ''
+          } catch (e) {
+            console.error('Groq conversational generation failed', e)
+          }
         }
       }
 
       if (aiResponse) {
-         finalMsg = aiResponse;
+        finalMsg = aiResponse
       }
     }
 
@@ -456,6 +505,16 @@ ${baseMsg}
     }
   } catch (err: any) {
     return fail(`Unexpected error: ${err.message || 'Unknown error'}`)
+  } finally {
+    // BN-5/6: This finally block runs on all non-background paths (help, auth
+    // failure, period-not-found, etc.). The background path (after()) releases
+    // the lock itself in its own finally block, so we only release here when
+    // the background task was NOT scheduled.
+    // We track whether after() was invoked via _backgroundScheduled flag.
+    if (!_backgroundScheduled) {
+      releaseLock()
+    }
+    _backgroundScheduled = false
   }
 }
 
@@ -532,7 +591,7 @@ function matchStudent(
     return (
       studentName === input ||
       studentName.includes(input) ||
-      nameParts[0] === input || 
+      nameParts[0] === input ||
       nameParts[nameParts.length - 1] === input
     )
   })
