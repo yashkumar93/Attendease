@@ -119,6 +119,13 @@ export default async function DashboardPage() {
             </a>
           </div>
         )}
+        {!isAdmin && (
+          <div className="flex items-center gap-2">
+            <a href="/dashboard/instructor/attendance" className="btn btn-primary">
+              Mark Attendance
+            </a>
+          </div>
+        )}
       </div>
 
       {/* Stats grid */}
@@ -207,6 +214,62 @@ export default async function DashboardPage() {
                 </p>
                 <p className="text-xs text-muted mt-0.5">
                   Synchronize or download attendance reports directly to CSV or Google Sheets.
+                </p>
+              </div>
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Quick actions for Instructor */}
+      {!isAdmin && (
+        <div className="card p-6 sm:p-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="font-serif text-2xl font-normal text-ink tracking-tight">
+                Quick Actions
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                Key workflows for attendance management
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <a
+              href="/dashboard/instructor/attendance"
+              className="flex items-start gap-4 p-5 rounded-lg border border-hairline bg-canvas hover:border-[#d8d0c5] hover:bg-surface-soft/60 transition-all group"
+            >
+              <div className="w-10 h-10 rounded-md bg-surface-card border border-hairline flex items-center justify-center text-ink flex-shrink-0 group-hover:text-primary transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-ink group-hover:text-primary transition-colors">
+                  Attendance Overview
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  View and manage attendance for all classes and dates.
+                </p>
+              </div>
+            </a>
+
+            <a
+              href="/dashboard/instructor"
+              className="flex items-start gap-4 p-5 rounded-lg border border-hairline bg-canvas hover:border-[#d8d0c5] hover:bg-surface-soft/60 transition-all group"
+            >
+              <div className="w-10 h-10 rounded-md bg-surface-card border border-hairline flex items-center justify-center text-ink flex-shrink-0 group-hover:text-primary transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-ink group-hover:text-primary transition-colors">
+                  My Periods
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  View your assigned teaching sessions for today.
                 </p>
               </div>
             </a>

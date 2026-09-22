@@ -80,7 +80,7 @@ export async function updateAttendanceStatus(
   if (recordErr || !record) return { error: 'Attendance record not found' }
 
   const isAdmin = profile?.role === 'admin'
-  const isInstructor = (record as any)?.periods?.instructor_id === user.id
+  const isInstructor = profile?.role === 'instructor'
 
   if (!isAdmin && !isInstructor) {
     return { error: 'Unauthorized to edit attendance for this period' }
@@ -131,7 +131,7 @@ export async function savePeriodAttendanceEdit(
   if (periodErr || !period) return { error: 'Period not found' }
 
   const isAdmin = profile?.role === 'admin'
-  const isInstructor = period.instructor_id === user.id
+  const isInstructor = profile?.role === 'instructor'
 
   if (!isAdmin && !isInstructor) {
     return { error: 'Unauthorized to edit attendance for this period' }
@@ -165,7 +165,7 @@ export async function savePeriodAttendanceEdit(
           status: targetStatus,
           last_modified_by: user.id,
           last_modified_at: new Date().toISOString(),
-          remark: batchRemark?.trim() || 'Updated by admin',
+          remark: batchRemark?.trim() || (isAdmin ? 'Updated by admin' : 'Updated by instructor'),
         })
       }
     } else {
@@ -210,7 +210,7 @@ export async function getAttendanceHistory(attendanceId: number) {
 
   const { data, error } = await supabase
     .from('attendance_history')
-    .select('*')
+    .select('*, profiles:changed_by(full_name)')
     .eq('attendance_id', attendanceId)
     .order('changed_at', { ascending: false })
 

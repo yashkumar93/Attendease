@@ -35,6 +35,8 @@ interface AttendanceRow {
   last_modified_at: string | null
   remark: string | null
   students: { id: number; name: string; roll_number: string; status: string }
+  markedByProfile?: { full_name: string } | null
+  lastModifiedByProfile?: { full_name: string } | null
 }
 
 interface HistoryRow {
@@ -63,6 +65,7 @@ export default function AttendancePage() {
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [submitted, setSubmitted] = useState(false)
+  const [profileNames, setProfileNames] = useState<Map<string, string>>(new Map())
 
   // Single student edit modal
   const [studentEditModal, setStudentEditModal] = useState<{
@@ -89,6 +92,26 @@ export default function AttendancePage() {
         (attendanceData as any[]).filter((a: any) => a.status === 'Absent').map((a: any) => a.student_id)
       )
       setAbsentIds(absent)
+
+      // Fetch profile names for marked_by and last_modified_by UUIDs
+      const userIds = new Set<string>()
+      for (const record of attendanceData as any[]) {
+        if (record.marked_by) userIds.add(record.marked_by)
+        if (record.last_modified_by) userIds.add(record.last_modified_by)
+      }
+      if (userIds.size > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', Array.from(userIds))
+        if (profiles) {
+          const nameMap = new Map<string, string>()
+          for (const p of profiles as any[]) {
+            nameMap.set(p.id, p.full_name)
+          }
+          setProfileNames(nameMap)
+        }
+      }
     }
   }
 
@@ -168,7 +191,7 @@ export default function AttendancePage() {
       const result = await savePeriodAttendanceEdit(
         periodId,
         Array.from(absentIds),
-        userRole === 'admin' ? 'Corrected by Admin' : 'Attendance updated'
+        userRole === 'admin' ? 'Corrected by Admin' : 'Corrected by Instructor'
       )
       if (result.error) {
         showToast(result.error, 'error')
@@ -284,6 +307,11 @@ export default function AttendancePage() {
               {userRole === 'admin' && (
                 <span className="badge badge-pill text-[11px] bg-surface-cream-strong text-ink">
                   Admin Mode
+                </span>
+              )}
+              {userRole === 'instructor' && (
+                <span className="badge badge-pill text-[11px] bg-accent-teal/15 text-accent-teal border border-accent-teal/30">
+                  Instructor Mode
                 </span>
               )}
             </div>
@@ -451,6 +479,25 @@ export default function AttendancePage() {
                   <div>
                     <p className="font-medium text-foreground">{student.name}</p>
                     <p className="text-xs text-muted-foreground font-mono">{student.roll_number}</p>
+                    {/* Show who marked/modified this record */}
+                    {submitted && attendanceRecord && (
+                      <div className="mt-1 space-y-0.5">
+                        <p className="text-[10px] text-muted-foreground">
+                          Marked by <span className="font-medium text-foreground/70">{profileNames.get(attendanceRecord.marked_by) || 'Unknown'}</span>
+                          {attendanceRecord.marked_at && (
+                            <span> · {new Date(attendanceRecord.marked_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                          )}
+                        </p>
+                        {attendanceRecord.last_modified_by && (
+                          <p className="text-[10px] text-amber-700 dark:text-amber-300">
+                            Last edited by <span className="font-medium">{profileNames.get(attendanceRecord.last_modified_by) || 'Unknown'}</span>
+                            {attendanceRecord.last_modified_at && (
+                              <span> · {new Date(attendanceRecord.last_modified_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
