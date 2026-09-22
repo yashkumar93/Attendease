@@ -9,6 +9,7 @@ import {
   updateAttendanceStatus,
   savePeriodAttendanceEdit,
   getAttendanceHistory,
+  getPeriodAuditTrail,
 } from '@/app/actions/attendance'
 import { useToast } from '@/components/ui/ToastProvider'
 import { Modal } from '@/components/ui/Modal'
@@ -62,12 +63,13 @@ export default function AttendancePage() {
   const [students, setStudents] = useState<Student[]>([])
   const [existingAttendance, setExistingAttendance] = useState<AttendanceRow[]>([])
   const [absentIds, setAbsentIds] = useState<Set<number>>(new Set())
-  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'present' | 'absent'>('all')
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'present' | 'absent' | 'remarks'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [submitted, setSubmitted] = useState(false)
   const [profileNames, setProfileNames] = useState<Map<string, string>>(new Map())
+  const [profileInfo, setProfileInfo] = useState<Map<string, { name: string; role: string }>>(new Map())
 
   // Single student edit modal
   const [studentEditModal, setStudentEditModal] = useState<{
@@ -80,6 +82,11 @@ export default function AttendancePage() {
   const [historyModal, setHistoryModal] = useState<{ attendanceId: number; studentName: string } | null>(null)
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+
+  // Period Audit Drawer
+  const [periodAuditOpen, setPeriodAuditOpen] = useState(false)
+  const [periodAuditLogs, setPeriodAuditLogs] = useState<any[]>([])
+  const [periodAuditLoading, setPeriodAuditLoading] = useState(false)
 
   const fetchAttendanceData = async () => {
     const { data: attendanceData } = await supabase
@@ -98,7 +105,7 @@ export default function AttendancePage() {
       )
       setAbsentIds(absent)
 
-      // Fetch profile names for marked_by and last_modified_by UUIDs
+      // Fetch profile names and roles for marked_by and last_modified_by UUIDs
       const userIds = new Set<string>()
       for (const record of attendanceData as any[]) {
         if (record.marked_by) userIds.add(record.marked_by)
@@ -107,14 +114,17 @@ export default function AttendancePage() {
       if (userIds.size > 0) {
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, full_name')
+          .select('id, full_name, role')
           .in('id', Array.from(userIds))
         if (profiles) {
           const nameMap = new Map<string, string>()
+          const infoMap = new Map<string, { name: string; role: string }>()
           for (const p of profiles as any[]) {
             nameMap.set(p.id, p.full_name)
+            infoMap.set(p.id, { name: p.full_name, role: p.role })
           }
           setProfileNames(nameMap)
+          setProfileInfo(infoMap)
         }
       }
     }
@@ -168,6 +178,55 @@ export default function AttendancePage() {
     load()
   }, [periodId])
 
+  // Live synchronization across all admins and instructors
+  useEffect(() => {
+    const channel = supabase
+      .channel(`attendance-period-${periodId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'attendance', filter: `period_id=eq.${periodId}` },
+        () => {
+          fetchAttendanceData()
+        }
+      )
+      .on(
+        'broadcast',
+        { event: 'attendance-updated' },
+        (msg: any) => {
+          fetchAttendanceData()
+          if (msg?.payload?.actorName) {
+            showToast(`Synced: ${msg.payload.actorName} updated attendance/remarks`, 'info')
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [periodId])
+
+  const broadcastAttendanceChange = async (description?: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const actorName = (user && profileNames.get(user.id)) || userRole || 'Staff member'
+      const channel = supabase.channel(`attendance-period-${periodId}`)
+      await channel.send({
+        type: 'broadcast',
+        event: 'attendance-updated',
+        payload: { periodId, actorName, description, timestamp: Date.now() },
+      })
+      const auditChannel = supabase.channel('audit-trail-sync')
+      await auditChannel.send({
+        type: 'broadcast',
+        event: 'audit-sync',
+        payload: { periodId, actorName, description, timestamp: Date.now() },
+      })
+    } catch {
+      // Fail-soft on broadcast
+    }
+  }
+
   const toggleAbsent = (studentId: number) => {
     setAbsentIds((prev) => {
       const next = new Set(prev)
@@ -186,6 +245,7 @@ export default function AttendancePage() {
       } else {
         showToast('Attendance submitted')
         await fetchAttendanceData()
+        await broadcastAttendanceChange('Submitted initial period attendance')
       }
     })
   }
@@ -204,6 +264,7 @@ export default function AttendancePage() {
         showToast('Changes saved')
         setIsEditing(false)
         await fetchAttendanceData()
+        await broadcastAttendanceChange('Saved batch attendance edits')
       }
     })
   }
@@ -220,19 +281,35 @@ export default function AttendancePage() {
       if (result.error) {
         showToast(result.error, 'error')
       } else {
-        showToast(`Marked ${studentEditModal.record.students.name} as ${studentEditModal.targetStatus}`)
+        showToast(`Saved remark & status for ${studentEditModal.record.students.name}`)
         setStudentEditModal(null)
         await fetchAttendanceData()
+        await broadcastAttendanceChange(`Updated ${studentEditModal.record.students.name}: ${studentEditModal.targetStatus}`)
       }
     })
   }
 
-  const openStudentCorrection = (record: AttendanceRow) => {
+  const openStudentCorrection = (record: AttendanceRow, mode: 'status' | 'remark' = 'status') => {
     setStudentEditModal({
       record,
-      targetStatus: record.status === 'Present' ? 'Absent' : 'Present',
-      remark: '',
+      targetStatus: mode === 'status'
+        ? (record.status === 'Present' ? 'Absent' : 'Present')
+        : (record.status as 'Present' | 'Absent'),
+      remark: record.remark || '',
     })
+  }
+
+  const loadPeriodAuditTrail = async () => {
+    setPeriodAuditOpen(true)
+    setPeriodAuditLoading(true)
+    try {
+      const logs = await getPeriodAuditTrail(periodId)
+      setPeriodAuditLogs(logs)
+    } catch {
+      showToast('Unable to load period audit history', 'error')
+    } finally {
+      setPeriodAuditLoading(false)
+    }
   }
 
   const viewHistory = async (attendanceId: number, studentName: string) => {
@@ -277,14 +354,20 @@ export default function AttendancePage() {
 
   const absentCount = students.filter((s) => absentIds.has(s.id)).length
   const presentCount = students.length - absentCount
+  const remarkCount = existingAttendance.filter((a) => Boolean(a.remark && a.remark.trim())).length
 
   const filteredStudents = students.filter((student) => {
     const isAbsent = absentIds.has(student.id)
+    const record = existingAttendance.find((a) => a.student_id === student.id)
     if (attendanceFilter === 'present' && isAbsent) return false
     if (attendanceFilter === 'absent' && !isAbsent) return false
+    if (attendanceFilter === 'remarks' && (!record || !record.remark || !record.remark.trim())) return false
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase().trim()
-    return student.name.toLowerCase().includes(q) || student.roll_number.toLowerCase().includes(q)
+    const matchName = student.name.toLowerCase().includes(q)
+    const matchRoll = student.roll_number.toLowerCase().includes(q)
+    const matchRemark = record?.remark?.toLowerCase().includes(q) || false
+    return matchName || matchRoll || matchRemark
   })
 
   if (loading) {
@@ -330,6 +413,10 @@ export default function AttendancePage() {
               <span className="font-mono">{period?.start_time?.slice(0, 5)} – {period?.end_time?.slice(0, 5)}</span>
               <span>{period?.profiles?.full_name}</span>
               <span className="badge badge-pill text-[10px]">{period?.period_type}</span>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-grove-pale text-grove border border-grove/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-grove animate-pulse" />
+                Live Sync
+              </span>
             </div>
           </div>
           <div className="flex items-center justify-around sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-hairline">
@@ -392,7 +479,6 @@ export default function AttendancePage() {
             <button
               onClick={() => {
                 setIsEditing(false)
-                // Revert absentIds to existingAttendance
                 const absent = new Set(
                   (existingAttendance as any[]).filter((a: any) => a.status === 'Absent').map((a: any) => a.student_id)
                 )
@@ -413,7 +499,7 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* Sticky Action Bar (Tabs + Search + Edit / Submit) */}
+      {/* Sticky Action Bar (Tabs + Search + Edit / Submit / Audit) */}
       <div className="sticky top-14 lg:top-0 z-20 bg-canvas/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-hairline/60 mb-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
         {/* Status Filter Tabs */}
         <div
@@ -489,6 +575,30 @@ export default function AttendancePage() {
               {absentCount}
             </span>
           </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={attendanceFilter === 'remarks'}
+            onClick={() => setAttendanceFilter('remarks')}
+            className={`px-3 py-1.5 rounded-md text-xs transition-all flex items-center gap-2 cursor-pointer ${
+              attendanceFilter === 'remarks'
+                ? 'bg-ink text-canvas shadow-xs font-semibold'
+                : 'text-muted hover:text-ink font-medium'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs">💬</span>
+              Remarks
+            </span>
+            <span
+              className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
+                attendanceFilter === 'remarks' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
+              }`}
+            >
+              {remarkCount}
+            </span>
+          </button>
         </div>
 
         <div className="flex-1 flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
@@ -497,7 +607,7 @@ export default function AttendancePage() {
               type="text"
               placeholder={
                 attendanceFilter === 'all'
-                  ? 'Search by name or roll number'
+                  ? 'Search by name, roll number, or remark…'
                   : `Search within ${attendanceFilter} students…`
               }
               value={searchQuery}
@@ -558,6 +668,16 @@ export default function AttendancePage() {
                 Edit attendance
               </button>
               <button
+                onClick={loadPeriodAuditTrail}
+                className="btn btn-secondary btn-sm flex items-center gap-1.5"
+                title="View period audit history & remarks"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Period audit
+              </button>
+              <button
                 onClick={handleExportThisPeriod}
                 className="btn btn-secondary btn-sm flex items-center gap-1.5"
                 title="Export this period's attendance as CSV"
@@ -587,7 +707,7 @@ export default function AttendancePage() {
                 if (isEditing || !submitted) {
                   toggleAbsent(student.id)
                 } else if (submitted && attendanceRecord) {
-                  openStudentCorrection(attendanceRecord)
+                  openStudentCorrection(attendanceRecord, 'status')
                 }
               }}
               className={`attendance-card card p-4 select-none cursor-pointer ${
@@ -596,10 +716,10 @@ export default function AttendancePage() {
                   : 'border-success/20 bg-success-light/30 hover:border-success/40'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors duration-150 ${
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors duration-150 flex-shrink-0 ${
                       isAbsent
                         ? 'bg-danger/10 text-danger'
                         : 'bg-success/10 text-success'
@@ -609,21 +729,21 @@ export default function AttendancePage() {
                       {isAbsent ? '✗' : '✓'}
                     </span>
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-foreground">{student.name}</p>
                     <p className="text-xs text-muted-foreground font-mono">{student.roll_number}</p>
                     {/* Show who marked/modified this record */}
                     {submitted && attendanceRecord && (
                       <div className="mt-1 space-y-0.5">
                         <p className="text-[10px] text-muted-foreground">
-                          Marked by <span className="font-medium text-foreground/70">{profileNames.get(attendanceRecord.marked_by) || 'Unknown'}</span>
+                          Marked by <span className="font-medium text-foreground/70">{profileNames.get(attendanceRecord.marked_by) || 'Faculty'}</span>
                           {attendanceRecord.marked_at && (
                             <span> · {new Date(attendanceRecord.marked_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                           )}
                         </p>
                         {attendanceRecord.last_modified_by && (
                           <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                            Last edited by <span className="font-medium">{profileNames.get(attendanceRecord.last_modified_by) || 'Unknown'}</span>
+                            Last edited by <span className="font-medium">{profileNames.get(attendanceRecord.last_modified_by) || 'Faculty'}</span>
                             {attendanceRecord.last_modified_at && (
                               <span> · {new Date(attendanceRecord.last_modified_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                             )}
@@ -631,10 +751,55 @@ export default function AttendancePage() {
                         )}
                       </div>
                     )}
+
+                    {/* Prominent Remark Callout Box (Shown to every admin and instructor) */}
+                    {submitted && attendanceRecord?.remark && (
+                      <div className="mt-2.5 p-2.5 rounded-lg bg-surface-cream-strong/75 border border-hairline max-w-xl">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                            <span className="text-xs">💬</span> Remark
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openStudentCorrection(attendanceRecord, 'remark')
+                            }}
+                            className="text-[11px] text-grove hover:underline font-medium cursor-pointer"
+                          >
+                            Edit remark
+                          </button>
+                        </div>
+                        <p className="text-xs text-ink font-medium italic leading-relaxed whitespace-pre-wrap break-words">
+                          &ldquo;{attendanceRecord.remark}&rdquo;
+                        </p>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-muted flex-wrap">
+                          <span>
+                            By{' '}
+                            <span className="font-medium text-ink">
+                              {profileNames.get(attendanceRecord.last_modified_by || attendanceRecord.marked_by) || 'Faculty/Admin'}
+                            </span>
+                          </span>
+                          {profileInfo.get(attendanceRecord.last_modified_by || attendanceRecord.marked_by)?.role && (
+                            <span className="badge badge-pill text-[9px] py-0 px-1.5 bg-surface-soft text-ink capitalize font-mono">
+                              {profileInfo.get(attendanceRecord.last_modified_by || attendanceRecord.marked_by)?.role}
+                            </span>
+                          )}
+                          <span>·</span>
+                          <span>
+                            {attendanceRecord.last_modified_at
+                              ? new Date(attendanceRecord.last_modified_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                              : attendanceRecord.marked_at
+                              ? new Date(attendanceRecord.marked_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                              : ''}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
                   {wasModified && (
                     <span className="text-[10px] text-amber-700 bg-amber-100 dark:bg-amber-950 dark:text-amber-300 px-2 py-0.5 rounded-full font-medium">
                       Edited
@@ -645,12 +810,28 @@ export default function AttendancePage() {
                     {isAbsent ? 'Absent' : 'Present'}
                   </span>
 
+                  {/* Add Remark button if student does not have a remark yet */}
+                  {submitted && attendanceRecord && !attendanceRecord.remark && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openStudentCorrection(attendanceRecord, 'remark')
+                      }}
+                      className="btn btn-secondary btn-sm text-xs py-1 px-2.5 flex items-center gap-1 text-muted hover:text-ink border-dashed"
+                      title="Add a remark for this student"
+                    >
+                      <span className="text-xs">💬</span>
+                      <span>+ Remark</span>
+                    </button>
+                  )}
+
                   {/* Individual edit button (always accessible once submitted) */}
                   {submitted && attendanceRecord && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        openStudentCorrection(attendanceRecord)
+                        openStudentCorrection(attendanceRecord, 'status')
                       }}
                       className="btn btn-ghost btn-sm btn-icon text-foreground hover:bg-muted"
                       title="Edit this student's attendance & reason"
@@ -669,7 +850,7 @@ export default function AttendancePage() {
                         viewHistory(attendanceRecord.id, student.name)
                       }}
                       className="btn btn-ghost btn-sm btn-icon text-muted-foreground hover:text-foreground"
-                      title="View audit history"
+                      title="View student audit history"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -694,6 +875,8 @@ export default function AttendancePage() {
               <svg className="w-6 h-6 text-danger" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
+            ) : attendanceFilter === 'remarks' ? (
+              <span className="text-2xl">💬</span>
             ) : (
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -707,6 +890,8 @@ export default function AttendancePage() {
               ? 'No absent students'
               : attendanceFilter === 'present'
               ? 'No present students'
+              : attendanceFilter === 'remarks'
+              ? 'No remarks recorded for this period'
               : 'No active students in this class'}
           </h3>
           <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
@@ -716,6 +901,8 @@ export default function AttendancePage() {
               ? 'All students are marked present for this session (100% attendance).'
               : attendanceFilter === 'present'
               ? 'All students are currently marked absent for this session.'
+              : attendanceFilter === 'remarks'
+              ? 'No instructors or admins have added remarks for any students in this period yet.'
               : 'There are no active students in this class.'}
           </p>
           {(searchQuery || attendanceFilter !== 'all') && (
@@ -747,7 +934,7 @@ export default function AttendancePage() {
       <Modal
         isOpen={!!studentEditModal}
         onClose={() => setStudentEditModal(null)}
-        title={`Edit attendance — ${studentEditModal?.record.students.name || ''}`}
+        title={`Student Attendance & Remark — ${studentEditModal?.record.students.name || ''}`}
       >
         {studentEditModal && (
           <div className="space-y-4">
@@ -765,7 +952,7 @@ export default function AttendancePage() {
             </div>
 
             <div>
-              <label className="label font-medium mb-1.5 block">Select new status *</label>
+              <label className="label font-medium mb-1.5 block">Attendance Status</label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -793,16 +980,36 @@ export default function AttendancePage() {
             </div>
 
             <div>
-              <label className="label font-medium mb-1.5 block">Reason or remark (optional)</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="label font-medium block">Reason or Remark</label>
+                <span className="text-[11px] text-muted">Visible to all admins & instructors</span>
+              </div>
               <textarea
                 value={studentEditModal.remark}
                 onChange={(e) => setStudentEditModal({ ...studentEditModal, remark: e.target.value })}
-                placeholder="e.g. Medical leave approved, Marked absent by mistake, Late entry"
-                className="input min-h-[85px]"
+                placeholder="e.g. Medical leave approved, Late arrival, On-duty college event, Marked absent by mistake"
+                className="input min-h-[90px] w-full text-sm"
                 rows={3}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                This remark will be permanently logged in the audit trail.
+              {/* Quick suggestion chips */}
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-muted">Quick add:</span>
+                {['Medical leave', 'Late arrival', 'On-duty / Event', 'Approved absence', 'Present with permission'].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setStudentEditModal({
+                      ...studentEditModal,
+                      remark: studentEditModal.remark ? `${studentEditModal.remark} · ${chip}` : chip,
+                    })}
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-surface-soft border border-hairline text-body hover:bg-surface-cream-strong transition-colors cursor-pointer"
+                  >
+                    + {chip}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                This remark will sync in real-time and be permanently recorded in the audit trail visible across the entire faculty.
               </p>
             </div>
 
@@ -820,14 +1027,14 @@ export default function AttendancePage() {
                 disabled={isPending}
                 className="btn btn-primary"
               >
-                {isPending ? 'Saving…' : 'Save correction'}
+                {isPending ? 'Saving…' : 'Save & Sync'}
               </button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* History Modal */}
+      {/* Student History Modal */}
       <Modal
         isOpen={!!historyModal}
         onClose={() => setHistoryModal(null)}
@@ -869,6 +1076,84 @@ export default function AttendancePage() {
             ))}
           </div>
         )}
+      </Modal>
+
+      {/* Period-Level Audit Trail Modal */}
+      <Modal
+        isOpen={periodAuditOpen}
+        onClose={() => setPeriodAuditOpen(false)}
+        title={`Period Audit Trail — ${period?.classes?.class_name || ''} · ${period?.date || ''}`}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-hairline">
+            <p className="text-xs text-muted">
+              Chronological log of all attendance marks and remarks for this period
+            </p>
+            <button
+              onClick={loadPeriodAuditTrail}
+              disabled={periodAuditLoading}
+              className="text-xs text-grove hover:underline font-medium cursor-pointer"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {periodAuditLoading ? (
+            <div className="space-y-2.5">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="skeleton h-16 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : periodAuditLogs.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-muted">No audit trail entries logged for this period yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pe-1">
+              {periodAuditLogs.map((log: any) => (
+                <div key={log.id} className="p-3.5 rounded-lg border border-hairline bg-surface-card space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-sm text-ink">{log.student?.name || 'Student'}</p>
+                      <p className="text-[11px] font-mono text-muted">{log.student?.roll_number}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      {log.previous_status && log.previous_status !== log.new_status ? (
+                        <>
+                          <span className={`badge ${log.previous_status === 'Present' ? 'badge-present' : 'badge-absent'}`}>
+                            {log.previous_status}
+                          </span>
+                          <span className="text-muted text-[10px]">→</span>
+                        </>
+                      ) : null}
+                      <span className={`badge ${log.new_status === 'Present' ? 'badge-present' : 'badge-absent'}`}>
+                        {log.new_status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {log.remark && (
+                    <div className="p-2 rounded bg-surface-cream-strong/70 border border-hairline/60">
+                      <p className="text-xs text-ink font-medium italic">&ldquo;{log.remark}&rdquo;</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[11px] text-muted pt-1 border-t border-hairline/40">
+                    <span className="flex items-center gap-1.5">
+                      <span>Logged by {log.changedByProfile?.full_name || 'Staff'}</span>
+                      {log.changedByProfile?.role && (
+                        <span className="badge badge-pill text-[9px] py-0 px-1.5 bg-surface-soft text-ink capitalize font-mono">
+                          {log.changedByProfile.role}
+                        </span>
+                      )}
+                    </span>
+                    <span>{new Date(log.changed_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   )

@@ -35,31 +35,50 @@ export default function InstructorAttendancePage() {
     })
   }, [supabase])
 
+  const fetchPeriods = async () => {
+    setLoading(true)
+    let query = supabase
+      .from('periods')
+      .select('*, classes(class_name), subjects(subject_name), profiles(full_name), attendance(id, status, remark, students(status))')
+      .eq('date', date)
+      .order('class_id')
+      .order('start_time')
+
+    if (selectedClass) query = query.eq('class_id', selectedClass)
+
+    const { data } = await query
+    if (data) setPeriods(data as any)
+    setLoading(false)
+  }
+
   useEffect(() => {
-    async function fetch() {
-      setLoading(true)
-      let query = supabase
-        .from('periods')
-        .select('*, classes(class_name), subjects(subject_name), profiles(full_name), attendance(id, status, students(status))')
-        .eq('date', date)
-        .order('class_id')
-        .order('start_time')
+    fetchPeriods()
+  }, [date, selectedClass])
 
-      if (selectedClass) query = query.eq('class_id', selectedClass)
+  // Real-time synchronization for overview
+  useEffect(() => {
+    const channel = supabase
+      .channel('instructor-attendance-overview')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => {
+        fetchPeriods()
+      })
+      .on('broadcast', { event: 'attendance-updated' }, () => {
+        fetchPeriods()
+      })
+      .subscribe()
 
-      const { data } = await query
-      if (data) setPeriods(data as PeriodSummary[])
-      setLoading(false)
+    return () => {
+      supabase.removeChannel(channel)
     }
-    fetch()
-  }, [date, selectedClass, supabase])
+  }, [date, selectedClass])
 
-  const getSummary = (attendance: { id: number; status: string; students?: { status: string } | null }[]) => {
+  const getSummary = (attendance: any[]) => {
     const activeAttendance = attendance.filter((a) => a.students?.status !== 'inactive')
     const present = activeAttendance.filter((a) => a.status === 'Present').length
     const absent = activeAttendance.filter((a) => a.status === 'Absent').length
+    const remarks = activeAttendance.filter((a) => Boolean(a.remark && a.remark.trim())).length
     const total = activeAttendance.length
-    return { present, absent, total, marked: total > 0 }
+    return { present, absent, remarks, total, marked: total > 0 }
   }
 
   return (
@@ -183,6 +202,11 @@ export default function InstructorAttendancePage() {
                     <span className="badge badge-pill text-[10px]">
                       {period.period_type}
                     </span>
+                    {summary.remarks > 0 && (
+                      <span className="badge badge-pill text-[10px] bg-surface-cream-strong text-ink border border-hairline font-medium">
+                        💬 {summary.remarks} remark{summary.remarks > 1 ? 's' : ''}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-5">

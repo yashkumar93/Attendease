@@ -73,10 +73,10 @@ export async function updateAttendanceStatus(
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const adminClient = createAdminClient()
 
-  // Fetch record to verify period authorization
+  // Fetch record to verify period authorization and track previous state
   const { data: record, error: recordErr } = await adminClient
     .from('attendance')
-    .select('id, period_id, status, periods(instructor_id)')
+    .select('id, period_id, student_id, status, remark, periods(instructor_id)')
     .eq('id', attendanceId)
     .single()
 
@@ -89,21 +89,105 @@ export async function updateAttendanceStatus(
     return { error: 'Unauthorized to edit attendance for this period' }
   }
 
+  const trimmedRemark = remark !== undefined ? (remark.trim() || null) : (record as any).remark
+  const now = new Date().toISOString()
+
   const { error } = await adminClient
     .from('attendance')
     .update({
       status: newStatus,
       last_modified_by: user.id,
-      last_modified_at: new Date().toISOString(),
-      remark: remark?.trim() || null,
+      last_modified_at: now,
+      remark: trimmedRemark,
     } as any)
     .eq('id', attendanceId)
 
   if (error) return { error: error.message }
 
+  // Ensure an audit entry exists in attendance_history even if status didn't change but remark changed
+  const statusChanged = (record as any).status !== newStatus
+  const remarkChanged = ((record as any).remark || null) !== trimmedRemark
+  if (!statusChanged && remarkChanged) {
+    await adminClient.from('attendance_history').insert({
+      attendance_id: attendanceId,
+      period_id: (record as any).period_id,
+      student_id: (record as any).student_id,
+      previous_status: (record as any).status,
+      new_status: newStatus,
+      changed_by: user.id,
+      changed_at: now,
+      remark: trimmedRemark,
+    } as any)
+  }
+
   revalidatePath(`/dashboard/attendance/${(record as any).period_id}`)
   revalidatePath('/dashboard/admin/attendance')
-  revalidatePath('/dashboard/instructor')
+  revalidatePath('/dashboard/instructor/attendance')
+  revalidatePath('/dashboard/audit')
+  return { success: true }
+}
+
+export async function updateStudentRemark(
+  attendanceId: number,
+  remark: string
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  const isAdmin = profile?.role === 'admin'
+  const isInstructor = profile?.role === 'instructor'
+  if (!isAdmin && !isInstructor) {
+    return { error: 'Unauthorized to edit attendance remarks' }
+  }
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const adminClient = createAdminClient()
+
+  const { data: record, error: recordErr } = await adminClient
+    .from('attendance')
+    .select('id, period_id, student_id, status, remark')
+    .eq('id', attendanceId)
+    .single()
+
+  if (recordErr || !record) return { error: 'Attendance record not found' }
+
+  const trimmedRemark = remark.trim() || null
+  const now = new Date().toISOString()
+
+  const { error } = await adminClient
+    .from('attendance')
+    .update({
+      remark: trimmedRemark,
+      last_modified_by: user.id,
+      last_modified_at: now,
+    } as any)
+    .eq('id', attendanceId)
+
+  if (error) return { error: error.message }
+
+  // Log in attendance_history
+  await adminClient.from('attendance_history').insert({
+    attendance_id: attendanceId,
+    period_id: (record as any).period_id,
+    student_id: (record as any).student_id,
+    previous_status: (record as any).status,
+    new_status: (record as any).status,
+    changed_by: user.id,
+    changed_at: now,
+    remark: trimmedRemark,
+  } as any)
+
+  revalidatePath(`/dashboard/attendance/${(record as any).period_id}`)
+  revalidatePath('/dashboard/admin/attendance')
+  revalidatePath('/dashboard/instructor/attendance')
+  revalidatePath('/dashboard/audit')
   return { success: true }
 }
 
@@ -297,4 +381,143 @@ export async function getStudentsForPeriod(periodId: number) {
 
   if (error) throw new Error(error.message)
   return students as any[]
+}
+
+export async function getPeriodAuditTrail(periodId: number) {
+  const supabase = await createClient()
+
+  const { data: historyData, error } = await supabase
+    .from('attendance_history')
+    .select('*')
+    .eq('period_id', periodId)
+    .order('changed_at', { ascending: false })
+
+  if (error || !historyData) return []
+
+  const studentIds = new Set<number>()
+  const userIds = new Set<string>()
+
+  for (const h of historyData) {
+    if (h.student_id) studentIds.add(h.student_id)
+    if (h.changed_by) userIds.add(h.changed_by)
+  }
+
+  const [studentsRes, profilesRes] = await Promise.all([
+    studentIds.size > 0
+      ? supabase.from('students').select('id, name, roll_number').in('id', Array.from(studentIds))
+      : Promise.resolve({ data: [] }),
+    userIds.size > 0
+      ? supabase.from('profiles').select('id, full_name, role').in('id', Array.from(userIds))
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const studentMap = new Map((studentsRes.data || []).map((s: any) => [s.id, s]))
+  const profileMap = new Map((profilesRes.data || []).map((p: any) => [p.id, p]))
+
+  return historyData.map((h: any) => ({
+    ...h,
+    student: studentMap.get(h.student_id),
+    changedByProfile: profileMap.get(h.changed_by),
+  }))
+}
+
+export async function getAuditTrail(filters?: {
+  limit?: number
+  classId?: number
+  date?: string
+  hasRemarkOnly?: boolean
+  search?: string
+}) {
+  const supabase = await createClient()
+  const limit = filters?.limit || 150
+
+  let query = supabase
+    .from('attendance_history')
+    .select('*')
+    .order('changed_at', { ascending: false })
+    .limit(limit)
+
+  if (filters?.hasRemarkOnly) {
+    query = query.not('remark', 'is', null)
+  }
+
+  const { data: historyData, error } = await query
+  if (error || !historyData) return []
+
+  const studentIds = new Set<number>()
+  const periodIds = new Set<number>()
+  const userIds = new Set<string>()
+
+  for (const h of historyData) {
+    if (h.student_id) studentIds.add(h.student_id)
+    if (h.period_id) periodIds.add(h.period_id)
+    if (h.changed_by) userIds.add(h.changed_by)
+  }
+
+  const [studentsRes, periodsRes, profilesRes] = await Promise.all([
+    studentIds.size > 0
+      ? supabase
+          .from('students')
+          .select('id, name, roll_number, class_id, classes(class_name)')
+          .in('id', Array.from(studentIds))
+      : Promise.resolve({ data: [] }),
+    periodIds.size > 0
+      ? supabase
+          .from('periods')
+          .select('id, date, period_number, start_time, end_time, class_id, classes(class_name), subjects(subject_name)')
+          .in('id', Array.from(periodIds))
+      : Promise.resolve({ data: [] }),
+    userIds.size > 0
+      ? supabase.from('profiles').select('id, full_name, role').in('id', Array.from(userIds))
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const studentMap = new Map((studentsRes.data || []).map((s: any) => [s.id, {
+    id: s.id,
+    name: s.name,
+    roll_number: s.roll_number,
+    class_id: s.class_id,
+    class_name: s.classes?.class_name,
+  }]))
+
+  const periodMap = new Map((periodsRes.data || []).map((p: any) => [p.id, {
+    id: p.id,
+    date: p.date,
+    period_number: p.period_number,
+    start_time: p.start_time,
+    end_time: p.end_time,
+    class_id: p.class_id,
+    class_name: p.classes?.class_name,
+    subject_name: p.subjects?.subject_name,
+  }]))
+
+  const profileMap = new Map((profilesRes.data || []).map((p: any) => [p.id, p]))
+
+  let results = historyData.map((h: any) => ({
+    ...h,
+    student: studentMap.get(h.student_id),
+    period: periodMap.get(h.period_id),
+    changedByProfile: profileMap.get(h.changed_by),
+  }))
+
+  if (filters?.classId) {
+    results = results.filter((r) => r.student?.class_id === filters.classId || r.period?.class_id === filters.classId)
+  }
+
+  if (filters?.date) {
+    results = results.filter((r) => r.period?.date === filters.date)
+  }
+
+  if (filters?.search) {
+    const q = filters.search.toLowerCase().trim()
+    results = results.filter((r) => {
+      const sName = r.student?.name?.toLowerCase() || ''
+      const sRoll = r.student?.roll_number?.toLowerCase() || ''
+      const remark = r.remark?.toLowerCase() || ''
+      const changer = r.changedByProfile?.full_name?.toLowerCase() || ''
+      return sName.includes(q) || sRoll.includes(q) || remark.includes(q) || changer.includes(q)
+    })
+  }
+
+  return results
 }
