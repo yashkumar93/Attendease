@@ -62,6 +62,7 @@ export default function AttendancePage() {
   const [students, setStudents] = useState<Student[]>([])
   const [existingAttendance, setExistingAttendance] = useState<AttendanceRow[]>([])
   const [absentIds, setAbsentIds] = useState<Set<number>>(new Set())
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'present' | 'absent'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -87,10 +88,13 @@ export default function AttendancePage() {
       .eq('period_id', periodId)
 
     if (attendanceData && attendanceData.length > 0) {
-      setExistingAttendance(attendanceData as AttendanceRow[])
+      const activeAttendance = (attendanceData as AttendanceRow[]).filter(
+        (a) => a.students?.status !== 'inactive'
+      )
+      setExistingAttendance(activeAttendance)
       setSubmitted(true)
       const absent = new Set(
-        (attendanceData as any[]).filter((a: any) => a.status === 'Absent').map((a: any) => a.student_id)
+        activeAttendance.filter((a) => a.status === 'Absent').map((a) => a.student_id)
       )
       setAbsentIds(absent)
 
@@ -271,14 +275,17 @@ export default function AttendancePage() {
     }
   }
 
-  const filteredStudents = students.filter((s) => {
-    if (!searchQuery) return true
-    const q = searchQuery.toLowerCase()
-    return s.name.toLowerCase().includes(q) || s.roll_number.toLowerCase().includes(q)
-  })
+  const absentCount = students.filter((s) => absentIds.has(s.id)).length
+  const presentCount = students.length - absentCount
 
-  const presentCount = students.length - absentIds.size
-  const absentCount = absentIds.size
+  const filteredStudents = students.filter((student) => {
+    const isAbsent = absentIds.has(student.id)
+    if (attendanceFilter === 'present' && isAbsent) return false
+    if (attendanceFilter === 'absent' && !isAbsent) return false
+    if (!searchQuery) return true
+    const q = searchQuery.toLowerCase().trim()
+    return student.name.toLowerCase().includes(q) || student.roll_number.toLowerCase().includes(q)
+  })
 
   if (loading) {
     return (
@@ -325,19 +332,46 @@ export default function AttendancePage() {
               <span className="badge badge-pill text-[10px]">{period?.period_type}</span>
             </div>
           </div>
-          <div className="flex items-center justify-around sm:justify-end gap-6 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-hairline">
-            <div className="text-center min-w-[50px]">
-              <p className="font-mono text-3xl font-medium text-success-foreground">{presentCount}</p>
-              <p className="text-[10px] text-muted">Present</p>
-            </div>
-            <div className="text-center min-w-[50px]">
-              <p className="font-mono text-3xl font-medium text-danger-foreground">{absentCount}</p>
-              <p className="text-[10px] text-muted">Absent</p>
-            </div>
-            <div className="text-center min-w-[50px]">
-              <p className="font-mono text-3xl font-medium text-ink">{students.length}</p>
-              <p className="text-[10px] text-muted">Total</p>
-            </div>
+          <div className="flex items-center justify-around sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-hairline">
+            <button
+              type="button"
+              onClick={() => setAttendanceFilter('present')}
+              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                attendanceFilter === 'present'
+                  ? 'bg-grove-pale/60 border-grove/40 shadow-xs'
+                  : 'border-transparent hover:bg-surface-soft/60'
+              }`}
+              title="Click to view present students"
+            >
+              <p className="font-mono text-2xl sm:text-3xl font-medium text-success-foreground">{presentCount}</p>
+              <p className="text-[10px] font-medium text-muted">Present</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAttendanceFilter('absent')}
+              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                attendanceFilter === 'absent'
+                  ? 'bg-danger-light/60 border-danger/40 shadow-xs'
+                  : 'border-transparent hover:bg-surface-soft/60'
+              }`}
+              title="Click to view absent students"
+            >
+              <p className="font-mono text-2xl sm:text-3xl font-medium text-danger-foreground">{absentCount}</p>
+              <p className="text-[10px] font-medium text-muted">Absent</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAttendanceFilter('all')}
+              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                attendanceFilter === 'all'
+                  ? 'bg-surface-cream-strong border-hairline shadow-xs'
+                  : 'border-transparent hover:bg-surface-soft/60'
+              }`}
+              title="Click to view all students"
+            >
+              <p className="font-mono text-2xl sm:text-3xl font-medium text-ink">{students.length}</p>
+              <p className="text-[10px] font-medium text-muted">Total</p>
+            </button>
           </div>
         </div>
       </div>
@@ -379,69 +413,163 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* Sticky Action Bar (Search + Edit / Submit) */}
-      <div className="sticky top-14 lg:top-0 z-20 bg-canvas/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-hairline/60 mb-4 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-        <input
-          type="text"
-          placeholder="Search by name or roll number"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="input flex-1"
-        />
-
-        {!submitted ? (
+      {/* Sticky Action Bar (Tabs + Search + Edit / Submit) */}
+      <div className="sticky top-14 lg:top-0 z-20 bg-canvas/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-hairline/60 mb-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        {/* Status Filter Tabs */}
+        <div
+          role="tablist"
+          aria-label="Filter students by status"
+          className="inline-flex p-1 bg-surface-card border border-hairline rounded-lg self-start sm:self-auto flex-shrink-0"
+        >
           <button
-            onClick={handleSubmit}
-            disabled={isPending}
-            className="btn btn-primary btn-lg whitespace-nowrap flex-shrink-0"
+            type="button"
+            role="tab"
+            aria-selected={attendanceFilter === 'all'}
+            onClick={() => setAttendanceFilter('all')}
+            className={`px-3 py-1.5 rounded-md text-xs transition-all flex items-center gap-2 cursor-pointer ${
+              attendanceFilter === 'all'
+                ? 'bg-canvas text-ink shadow-xs font-semibold border border-hairline'
+                : 'text-muted hover:text-ink font-medium'
+            }`}
           >
-            {isPending ? (
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Submitting…
-              </span>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <span>All</span>
+            <span
+              className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
+                attendanceFilter === 'all' ? 'bg-surface-soft text-ink font-semibold' : 'bg-surface-soft/60 text-muted'
+              }`}
+            >
+              {students.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={attendanceFilter === 'present'}
+            onClick={() => setAttendanceFilter('present')}
+            className={`px-3 py-1.5 rounded-md text-xs transition-all flex items-center gap-2 cursor-pointer ${
+              attendanceFilter === 'present'
+                ? 'bg-grove text-white shadow-xs font-semibold'
+                : 'text-muted hover:text-ink font-medium'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${attendanceFilter === 'present' ? 'bg-emerald-300' : 'bg-grove'}`} />
+              Present
+            </span>
+            <span
+              className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
+                attendanceFilter === 'present' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
+              }`}
+            >
+              {presentCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={attendanceFilter === 'absent'}
+            onClick={() => setAttendanceFilter('absent')}
+            className={`px-3 py-1.5 rounded-md text-xs transition-all flex items-center gap-2 cursor-pointer ${
+              attendanceFilter === 'absent'
+                ? 'bg-danger text-white shadow-xs font-semibold'
+                : 'text-muted hover:text-ink font-medium'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${attendanceFilter === 'absent' ? 'bg-rose-200' : 'bg-danger'}`} />
+              Absent
+            </span>
+            <span
+              className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
+                attendanceFilter === 'absent' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
+              }`}
+            >
+              {absentCount}
+            </span>
+          </button>
+        </div>
+
+        <div className="flex-1 flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              placeholder={
+                attendanceFilter === 'all'
+                  ? 'Search by name or roll number'
+                  : `Search within ${attendanceFilter} students…`
+              }
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input w-full pe-8 text-sm"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink text-xs p-1"
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {!submitted ? (
+            <button
+              onClick={handleSubmit}
+              disabled={isPending}
+              className="btn btn-primary btn-lg whitespace-nowrap flex-shrink-0"
+            >
+              {isPending ? (
+                <span className="flex items-center gap-2">
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Submitting…
+                </span>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Submit attendance
+                </>
+              )}
+            </button>
+          ) : !isEditing ? (
+            <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+              <div className="flex items-center gap-1.5 text-xs text-success-foreground font-medium px-3 py-1.5 bg-success-light border border-success/30 rounded-md">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Submit attendance
-              </>
-            )}
-          </button>
-        ) : !isEditing ? (
-          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
-            <div className="flex items-center gap-1.5 text-xs text-success-foreground font-medium px-3 py-1.5 bg-success-light border border-success/30 rounded-md">
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Submitted
+                Submitted
+              </div>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="btn btn-primary btn-sm flex items-center gap-1.5"
+                title="Edit all attendance statuses"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                </svg>
+                Edit attendance
+              </button>
+              <button
+                onClick={handleExportThisPeriod}
+                className="btn btn-secondary btn-sm flex items-center gap-1.5"
+                title="Export this period's attendance as CSV"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                Export CSV
+              </button>
             </div>
-            <button
-              onClick={() => setIsEditing(true)}
-              className="btn btn-primary btn-sm flex items-center gap-1.5"
-              title="Edit all attendance statuses"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-              </svg>
-              Edit attendance
-            </button>
-            <button
-              onClick={handleExportThisPeriod}
-              className="btn btn-secondary btn-sm flex items-center gap-1.5"
-              title="Export this period's attendance as CSV"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-              </svg>
-              Export CSV
-            </button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       {/* Student roster */}
@@ -556,19 +684,61 @@ export default function AttendancePage() {
       </div>
 
       {filteredStudents.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-sm text-muted">
+        <div className="card p-8 sm:p-12 text-center border-dashed border-hairline my-4">
+          <div className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center bg-surface-soft text-muted">
+            {attendanceFilter === 'absent' ? (
+              <svg className="w-6 h-6 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : attendanceFilter === 'present' ? (
+              <svg className="w-6 h-6 text-danger" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+            )}
+          </div>
+          <h3 className="text-base font-semibold text-ink">
             {searchQuery
-              ? `No students match "${searchQuery}"`
+              ? 'No matching students'
+              : attendanceFilter === 'absent'
+              ? 'No absent students'
+              : attendanceFilter === 'present'
+              ? 'No present students'
               : 'No active students in this class'}
+          </h3>
+          <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
+            {searchQuery
+              ? `No students found matching "${searchQuery}" in ${attendanceFilter === 'all' ? 'this class' : attendanceFilter + ' list'}.`
+              : attendanceFilter === 'absent'
+              ? 'All students are marked present for this session (100% attendance).'
+              : attendanceFilter === 'present'
+              ? 'All students are currently marked absent for this session.'
+              : 'There are no active students in this class.'}
           </p>
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="btn btn-secondary btn-sm mt-3"
-            >
-              Clear search
-            </button>
+          {(searchQuery || attendanceFilter !== 'all') && (
+            <div className="mt-4 flex items-center justify-center gap-2">
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Clear search
+                </button>
+              )}
+              {attendanceFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setAttendanceFilter('all')}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Show all students
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

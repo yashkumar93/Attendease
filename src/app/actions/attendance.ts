@@ -150,7 +150,7 @@ export async function savePeriodAttendanceEdit(
 
   const { data: existing } = await adminClient
     .from('attendance')
-    .select('id, student_id, status')
+    .select('id, student_id, status, marked_by, marked_at')
     .eq('period_id', periodId)
 
   const existingMap = new Map((existing || []).map((e: any) => [e.student_id, e]))
@@ -179,7 +179,8 @@ export async function savePeriodAttendanceEdit(
           period_id: periodId,
           student_id: s.id,
           status: targetStatus,
-          marked_by: cur.marked_by,
+          marked_by: cur.marked_by || user.id,
+          marked_at: cur.marked_at || now,
           last_modified_by: user.id,
           last_modified_at: now,
           remark: remarkText ?? defaultRemark,
@@ -192,7 +193,10 @@ export async function savePeriodAttendanceEdit(
         student_id: s.id,
         status: targetStatus,
         marked_by: user.id,
-        remark: remarkText,
+        marked_at: now,
+        last_modified_by: user.id,
+        last_modified_at: now,
+        remark: remarkText ?? defaultRemark,
       })
       changedCount++
     }

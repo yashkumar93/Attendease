@@ -81,7 +81,28 @@ export async function toggleStudentStatus(id: number, newStatus: 'active' | 'ina
 
   if (error) return { error: error.message }
 
+  // If student was deactivated, remove any attendance records for today or future periods so they don't persist as ghost records
+  if (newStatus === 'inactive') {
+    const today = new Date().toISOString().split('T')[0]
+    const admin = createAdminClient()
+    const { data: activePeriods } = await admin
+      .from('periods')
+      .select('id')
+      .gte('date', today)
+
+    if (activePeriods && activePeriods.length > 0) {
+      const periodIds = activePeriods.map((p: any) => p.id)
+      await admin
+        .from('attendance')
+        .delete()
+        .eq('student_id', id)
+        .in('period_id', periodIds)
+    }
+  }
+
   revalidatePath('/dashboard/admin/students')
+  revalidatePath('/dashboard/admin/attendance')
+  revalidatePath('/dashboard/instructor/attendance')
   return { success: true }
 }
 

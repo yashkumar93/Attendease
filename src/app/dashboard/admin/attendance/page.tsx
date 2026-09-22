@@ -16,7 +16,7 @@ interface PeriodSummary {
   classes: { class_name: string } | null
   subjects: { subject_name: string } | null
   profiles: { full_name: string } | null
-  attendance: { id: number; status: string }[]
+  attendance: { id: number; status: string; students?: { status: string } | null }[]
 }
 
 export default function AdminAttendancePage() {
@@ -39,7 +39,7 @@ export default function AdminAttendancePage() {
       setLoading(true)
       let query = supabase
         .from('periods')
-        .select('*, classes(class_name), subjects(subject_name), profiles(full_name), attendance(id, status)')
+        .select('*, classes(class_name), subjects(subject_name), profiles(full_name), attendance(id, status, students(status))')
         .eq('date', date)
         .order('class_id')
         .order('start_time')
@@ -53,10 +53,11 @@ export default function AdminAttendancePage() {
     fetch()
   }, [date, selectedClass, supabase])
 
-  const getSummary = (attendance: { id: number; status: string }[]) => {
-    const present = attendance.filter((a) => a.status === 'Present').length
-    const absent = attendance.filter((a) => a.status === 'Absent').length
-    const total = attendance.length
+  const getSummary = (attendance: { id: number; status: string; students?: { status: string } | null }[]) => {
+    const activeAttendance = attendance.filter((a) => a.students?.status !== 'inactive')
+    const present = activeAttendance.filter((a) => a.status === 'Present').length
+    const absent = activeAttendance.filter((a) => a.status === 'Absent').length
+    const total = activeAttendance.length
     return { present, absent, total, marked: total > 0 }
   }
 
