@@ -8,11 +8,20 @@ import { AnthropicSpikeMark } from './AnthropicSpikeMark'
 export function ChatBubble() {
   const [isOpen, setIsOpen] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [userRole, setUserRole] = useState<string>('instructor')
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       setIsAuthenticated(!!user)
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        if (profile) setUserRole((profile as any).role)
+      }
     })
   }, [supabase])
 
@@ -32,13 +41,13 @@ export function ChatBubble() {
         <button
           onClick={() => setIsOpen(true)}
           className="chat-fab"
-          aria-label="Open Quick Mark chat"
-          title="Quick Mark"
+          aria-label="Open AttendEase Assistant"
+          title="AttendEase Assistant"
         >
           <div className="chat-fab-inner">
             <AnthropicSpikeMark className="w-5 h-5 text-on-primary" />
           </div>
-          <span className="chat-fab-label">Quick Mark</span>
+          <span className="chat-fab-label">Assistant</span>
         </button>
       )}
 
@@ -50,7 +59,7 @@ export function ChatBubble() {
             className="chat-backdrop"
             onClick={() => setIsOpen(false)}
           />
-          <ChatPanel onClose={() => setIsOpen(false)} />
+          <ChatPanel onClose={() => setIsOpen(false)} userRole={userRole} />
         </>
       )}
     </>

@@ -4,32 +4,28 @@
 import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getCurrentPeriod } from '@/lib/period-config'
+import { getCurrentPeriod, getNextPeriod, getPeriodStatusSummary, PERIOD_TIMINGS, ACTIVE_DAYS } from '@/lib/period-config'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import Groq from 'groq-sdk'
+import { matchStudent, parseNameInput, isAllPresent, batchMatchNames, type StudentRecord } from '@/lib/fuzzy-match'
+import {
+  type ChatSession,
+  type ChatResponse,
+  type ChatStep,
+  type PeriodListItem,
+  type ConfirmationData,
+  type MenuOption,
+  type ClassOption,
+  createFreshSession,
+  isCancelCommand,
+  IDLE_TIMEOUT_MS,
+  MAX_FAILED_ATTEMPTS,
+  ACADEMIC_YEAR_START,
+} from '@/lib/types/chatbot-types'
 
-// BN-7: Module-level lazy singletons — clients are stateless and safe to reuse.
-// Previously they were constructed on every call (twice per request: once for
-// intent analysis and once for conversational response).
-let _geminiClient: GoogleGenerativeAI | null = null
-let _groqClient: Groq | null = null
-
-function getGeminiClient(): GoogleGenerativeAI | null {
-  if (!process.env.GEMINI_API_KEY) return null
-  if (!_geminiClient) {
-    _geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-  }
-  return _geminiClient
-}
-
-function getGroqClient(): Groq | null {
-  if (!process.env.GROQ_API_KEY) return null
-  if (!_groqClient) {
-    _groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY })
-  }
-  return _groqClient
-}
-
+// Re-export types the UI needs
+export type { ChatSession, ChatResponse, ChatStep }
+// Legacy type for backward compat during transition
 export interface ChatbotResult {
   success: boolean
   message: string
@@ -43,17 +39,30 @@ export interface ChatbotResult {
   detectedPeriodNumber?: number
 }
 
-// ── Global Concurrency Lock ────────────────────────────────────────
-// Enforces "at one time only one request will be served"
+// ── AI Client Singletons ────────────────────────────────────────
+let _geminiClient: GoogleGenerativeAI | null = null
+let _groqClient: Groq | null = null
+
+function getGeminiClient(): GoogleGenerativeAI | null {
+  if (!process.env.GEMINI_API_KEY) return null
+  if (!_geminiClient) _geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  return _geminiClient
+}
+
+function getGroqClient(): Groq | null {
+  if (!process.env.GROQ_API_KEY) return null
+  if (!_groqClient) _groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY })
+  return _groqClient
+}
+
+// ── Concurrency Lock ────────────────────────────────────────────
 let isProcessingRequest = false
 let lockTimestamp = 0
-const LOCK_TIMEOUT_MS = 15000 // 15-second safety timeout (increased for LLM calls)
+const LOCK_TIMEOUT_MS = 20000
 
 function acquireLock(): boolean {
   const now = Date.now()
-  if (isProcessingRequest && now - lockTimestamp < LOCK_TIMEOUT_MS) {
-    return false
-  }
+  if (isProcessingRequest && now - lockTimestamp < LOCK_TIMEOUT_MS) return false
   isProcessingRequest = true
   lockTimestamp = now
   return true
@@ -64,97 +73,1190 @@ function releaseLock() {
   lockTimestamp = 0
 }
 
-// BN-5/6: Tracks whether the background after() task has been scheduled.
-// When true, the background task owns the lock and releases it in its finally.
-// When false, the outer finally block releases it instead.
-let _backgroundScheduled = false
-
+// ═══════════════════════════════════════════════════════════════════
+// MAIN ENTRY POINT
+// ═══════════════════════════════════════════════════════════════════
 
 /**
- * Generates the formatting guide message.
+ * Process a chatbot message with full session state management.
+ * This is the new stateful entry point that replaces the old `processAttendanceMessage`.
  */
-export async function getFormatGuide(currentPeriodNum?: number | null): Promise<string> {
-  return (
-    `**Quick Mark Attendance Guide**\n\n` +
-    `You can mark attendance in any of the following ways:\n\n` +
-    `1. **Select a period button:**\n` +
-    `Select any period above, then enter absent student names or roll numbers.\n\n` +
-    `2. **Conversational or direct command:**\n` +
-    `• \`Period 3 - Rahul, Vicky\` _(marks them absent for Period 3)_\n` +
-    `• \`Mark John and Jane present for P2\` _(marks everyone else absent)_\n` +
-    `• \`Everyone is present today in period 1\` _(marks everyone present)_\n` +
-    `• \`3: 101, 104\` _(using roll numbers)_\n\n` +
-    (currentPeriodNum
-      ? `*Current active period:* **Period ${currentPeriodNum}**.\n\n`
-      : '') +
-    `*Note:* You can mark attendance as many times as needed. If attendance is already marked for a period, sending a new command will **update** it and log the change in the audit trail.`
+export async function processChatMessage(
+  message: string,
+  session: ChatSession | null
+): Promise<ChatResponse> {
+  // ── Auth ──
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return makeResponse('Please log in to use the attendance assistant.', session || createFreshSession('', 'other'), 'error')
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, full_name')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) {
+    return makeResponse('Profile not found. Please contact an administrator.', session || createFreshSession(user.id, 'other'), 'error')
+  }
+
+  const role = (profile as any).role as 'admin' | 'instructor'
+
+  // ── Session init or restore ──
+  let s: ChatSession
+  if (!session) {
+    s = createFreshSession(user.id, role)
+  } else {
+    s = { ...session, lastActivityAt: Date.now() }
+    // Check idle timeout
+    if (Date.now() - session.lastActivityAt > IDLE_TIMEOUT_MS) {
+      s = createFreshSession(user.id, role)
+      return makeResponse(
+        'Your session has expired due to inactivity. Let\'s start fresh!\n\nWhat would you like to do?',
+        s,
+        'menu',
+        { menuOptions: getMenuOptions(role) }
+      )
+    }
+  }
+
+  // Ensure role is always current
+  s.userId = user.id
+  s.role = role
+
+  const trimmed = message.trim()
+
+  // ── Global Rule 1: Cancel/Exit anywhere ──
+  if (trimmed && isCancelCommand(trimmed) && s.step !== 'menu') {
+    s = createFreshSession(user.id, role)
+    return makeResponse(
+      'Cancelled. No changes were saved.\n\nWhat would you like to do?',
+      s,
+      'menu',
+      { menuOptions: getMenuOptions(role) }
+    )
+  }
+
+  // ── Dispatch by current step ──
+  try {
+    switch (s.step) {
+      case 'menu':
+        return handleMenu(trimmed, s)
+      case 'select_class':
+        return handleClassSelection(trimmed, s)
+      case 'detect_period':
+        return detectCurrentPeriod(s)
+      case 'ask_date':
+        return handleAskDate(trimmed, s)
+      case 'show_periods':
+      case 'select_period':
+        return handleSelectPeriod(trimmed, s)
+      case 'ask_absentees':
+      case 'update_loop':
+        return handleAbsentees(trimmed, s)
+      case 'clarify_name':
+        return handleClarifyName(trimmed, s)
+      case 'confirm':
+        return handleConfirmation(trimmed, s)
+      case 'ask_overwrite':
+        return handleOverwrite(trimmed, s)
+      case 'query_intent':
+      case 'query_db':
+        return handleAnalyticsQuery(trimmed, s)
+      default:
+        s.step = 'menu'
+        return handleMenu(trimmed, s)
+    }
+  } catch (err: any) {
+    console.error('[Chatbot Error]:', err)
+    return makeResponse(
+      `Something went wrong: ${err.message || 'Unknown error'}. Please try again.`,
+      { ...s, step: 'menu' },
+      'error',
+      { menuOptions: getMenuOptions(s.role) }
+    )
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STEP HANDLERS
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Menu ────────────────────────────────────────────────────────
+async function handleMenu(text: string, s: ChatSession): Promise<ChatResponse> {
+  if (!text) {
+    return makeResponse(
+      'Welcome to **AttendEase Assistant**! What would you like to do?',
+      s,
+      'menu',
+      { menuOptions: getMenuOptions(s.role) }
+    )
+  }
+
+  const intent = detectMenuIntent(text)
+
+  if (intent === 'mark_today' || intent === 'update_previous') {
+    // Authorization check (Global Rule 3)
+    if (s.role !== 'admin' && s.role !== 'instructor') {
+      return makeResponse(
+        'Only instructors and administrators can mark or update attendance. You can ask questions about attendance data instead.\n\nWhat would you like to know?',
+        { ...s, currentIntent: 'general_query', step: 'query_intent' },
+        'text'
+      )
+    }
+  }
+
+  if (intent === 'mark_today') {
+    s.currentIntent = 'mark_today'
+    s.targetDate = getTodayIST()
+    return await startAttendanceFlow(s)
+  }
+
+  if (intent === 'update_previous') {
+    s.currentIntent = 'update_previous'
+    s.step = 'ask_date'
+    return makeResponse(
+      'What date would you like to update? Please use **DD/MM/YYYY** format (e.g. 21/09/2026).',
+      s,
+      'ask_input'
+    )
+  }
+
+  if (intent === 'general_query') {
+    s.currentIntent = 'general_query'
+    s.step = 'query_intent'
+    return makeResponse(
+      'What would you like to know? You can ask about attendance statistics, student records, or any other data.\n\n**Examples:**\n• "How many times was Priya absent this month?"\n• "Show me attendance for Period 3 today"\n• "Who are the most absent students this week?"',
+      s,
+      'ask_input'
+    )
+  }
+
+  // If we couldn't detect intent from text, check if it's a direct analytics query
+  if (text.includes('?') || text.toLowerCase().startsWith('how') || text.toLowerCase().startsWith('show') || text.toLowerCase().startsWith('who') || text.toLowerCase().startsWith('what')) {
+    s.currentIntent = 'general_query'
+    s.step = 'query_intent'
+    return handleAnalyticsQuery(text, s)
+  }
+
+  // Unrecognized — show menu again
+  return makeResponse(
+    'I didn\'t quite understand that. Please choose an option below, or ask me a question about attendance.',
+    s,
+    'menu',
+    { menuOptions: getMenuOptions(s.role) }
   )
 }
 
-/**
- * Check if the input message is a request for help/format.
- */
-function isHelpRequest(text: string): boolean {
-  const t = text.trim().toLowerCase()
-  return (
-    t === 'help' ||
-    t === 'format' ||
-    t === 'how' ||
-    t === 'how to mark' ||
-    t === 'hi' ||
-    t === 'hello' ||
-    t === 'hey' ||
-    t === 'guide' ||
-    t === 'info' ||
-    t === 'format?' ||
-    t.startsWith('how do i') ||
-    t.startsWith('how to') ||
-    t.startsWith('what is')
+// ── Start Attendance Flow (shared by Flow 1 entry) ──────────────
+async function startAttendanceFlow(s: ChatSession): Promise<ChatResponse> {
+  const adminClient = createAdminClient()
+
+  // Check if instructor teaches multiple classes
+  if (s.role === 'instructor') {
+    const { data: instructorPeriods } = await adminClient
+      .from('periods')
+      .select('class_id, classes(class_name)')
+      .eq('date', s.targetDate!)
+      .eq('instructor_id', s.userId)
+
+    if (!instructorPeriods || instructorPeriods.length === 0) {
+      return makeResponse(
+        `You don't have any classes scheduled for ${formatDateDisplay(s.targetDate!)}.`,
+        { ...s, step: 'menu' },
+        'error',
+        { menuOptions: getMenuOptions(s.role) }
+      )
+    }
+
+    const uniqueClasses = new Map<number, string>()
+    for (const p of instructorPeriods as any[]) {
+      if (!uniqueClasses.has(p.class_id)) {
+        uniqueClasses.set(p.class_id, p.classes?.class_name || `Class ${p.class_id}`)
+      }
+    }
+
+    if (uniqueClasses.size > 1) {
+      s.step = 'select_class'
+      const classList: ClassOption[] = Array.from(uniqueClasses.entries()).map(([id, name]) => ({ id, className: name }))
+      return makeResponse(
+        'You teach multiple classes. Which class would you like to mark attendance for?',
+        s,
+        'class_select',
+        { classList }
+      )
+    }
+
+    // Single class — auto-select
+    const [classId, className] = [...uniqueClasses.entries()][0]
+    s.classSectionId = classId
+    s.className = className
+  } else {
+    // Admin: if multiple classes, ask; for now fetch what exists today
+    const { data: todayPeriods } = await adminClient
+      .from('periods')
+      .select('class_id, classes(class_name)')
+      .eq('date', s.targetDate!)
+
+    if (!todayPeriods || todayPeriods.length === 0) {
+      return makeResponse(
+        `No schedule found for ${formatDateDisplay(s.targetDate!)}. Please ensure the daily schedule has been generated.`,
+        { ...s, step: 'menu' },
+        'error',
+        { menuOptions: getMenuOptions(s.role) }
+      )
+    }
+
+    const uniqueClasses = new Map<number, string>()
+    for (const p of todayPeriods as any[]) {
+      if (!uniqueClasses.has(p.class_id)) {
+        uniqueClasses.set(p.class_id, p.classes?.class_name || `Class ${p.class_id}`)
+      }
+    }
+
+    if (uniqueClasses.size > 1) {
+      s.step = 'select_class'
+      const classList: ClassOption[] = Array.from(uniqueClasses.entries()).map(([id, name]) => ({ id, className: name }))
+      return makeResponse(
+        'Multiple classes found. Which class would you like to mark attendance for?',
+        s,
+        'class_select',
+        { classList }
+      )
+    }
+
+    const [classId, className] = [...uniqueClasses.entries()][0]
+    s.classSectionId = classId
+    s.className = className
+  }
+
+  // Continue to period detection/selection
+  if (s.currentIntent === 'mark_today') {
+    return detectCurrentPeriod(s)
+  } else {
+    return showPeriodsForDate(s)
+  }
+}
+
+// ── Class Selection ─────────────────────────────────────────────
+async function handleClassSelection(text: string, s: ChatSession): Promise<ChatResponse> {
+  const adminClient = createAdminClient()
+
+  // Try to match by class name or number
+  const { data: classes } = await adminClient
+    .from('classes')
+    .select('id, class_name')
+
+  if (!classes) {
+    return makeResponse('Failed to fetch classes. Please try again.', { ...s, step: 'menu' }, 'error')
+  }
+
+  const input = text.toLowerCase().trim()
+  const matched = classes.find((c: any) =>
+    c.class_name.toLowerCase() === input ||
+    c.class_name.toLowerCase().includes(input) ||
+    c.id.toString() === input
+  )
+
+  if (!matched) {
+    s.failedAttempts++
+    if (s.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      s = createFreshSession(s.userId, s.role)
+      return makeResponse(
+        'Too many invalid entries. Let\'s start over.\n\nWhat would you like to do?',
+        s,
+        'menu',
+        { menuOptions: getMenuOptions(s.role) }
+      )
+    }
+    const classList: ClassOption[] = classes.map((c: any) => ({ id: c.id, className: c.class_name }))
+    return makeResponse(
+      `I couldn't find that class. Please select from the options below:`,
+      s,
+      'class_select',
+      { classList }
+    )
+  }
+
+  s.classSectionId = matched.id
+  s.className = (matched as any).class_name
+  s.failedAttempts = 0
+
+  if (s.currentIntent === 'mark_today') {
+    return detectCurrentPeriod(s)
+  } else {
+    return showPeriodsForDate(s)
+  }
+}
+
+// ── Detect Current Period (Flow 1) ──────────────────────────────
+async function detectCurrentPeriod(s: ChatSession): Promise<ChatResponse> {
+  const adminClient = createAdminClient()
+  const status = getPeriodStatusSummary()
+  const current = getCurrentPeriod()
+  const next = getNextPeriod()
+
+  // Fetch today's periods for this class
+  const { data: periods } = await adminClient
+    .from('periods')
+    .select('id, period_number, start_time, end_time, classes(class_name), subjects(subject_name), attendance(id, status)')
+    .eq('date', s.targetDate!)
+    .eq('class_id', s.classSectionId!)
+    .order('period_number')
+
+  if (!periods || periods.length === 0) {
+    return makeResponse(
+      `No periods found for ${s.className} on ${formatDateDisplay(s.targetDate!)}. Please ensure the schedule has been generated.`,
+      { ...s, step: 'menu' },
+      'error',
+      { menuOptions: getMenuOptions(s.role) }
+    )
+  }
+
+  if (current) {
+    // Find matching DB period
+    const dbPeriod = periods.find((p: any) => p.period_number === current.period_number)
+    if (dbPeriod) {
+      s.periodId = dbPeriod.id
+      s.periodNumber = current.period_number
+      s.periodLabel = `Period ${current.period_number} (${current.label})`
+      s.step = 'ask_absentees'
+
+      const attendance = (dbPeriod as any).attendance || []
+      const isAlreadyMarked = attendance.length > 0
+
+      let msg = `It's currently **${s.periodLabel}** for **${s.className}**.`
+      if (isAlreadyMarked) {
+        const presentCount = attendance.filter((a: any) => a.status === 'Present').length
+        const absentCount = attendance.filter((a: any) => a.status === 'Absent').length
+        msg += `\n\n⚠️ Attendance is already marked for this period (**${presentCount}** present, **${absentCount}** absent). Submitting again will **update** the existing records.`
+      }
+      msg += `\n\nPlease list the names of **absent students**, separated by commas.\nIf everyone is present, just say **"none"** or **"all present"**.`
+      msg += `\n\n_Reply **"change period"** to pick a different one._`
+
+      return makeResponse(msg, s, 'ask_input')
+    }
+  }
+
+  // No period currently in session
+  let msg = ''
+  if (status.statusType === 'before_school') {
+    msg = `Classes haven't started yet (current time: **${status.displayTime}**). The first period begins at **9:20 AM**.`
+  } else if (status.statusType === 'lunch_break') {
+    msg = `It's currently **lunch break** (12:40 – 1:30 PM).`
+  } else if (status.statusType === 'after_school') {
+    msg = `Classes have ended for the day (current time: **${status.displayTime}**).`
+  } else if (next) {
+    msg = `No period is currently in session. The next period is **Period ${next.period_number}** (${next.label}).`
+  } else {
+    msg = `No period is currently in session.`
+  }
+
+  msg += `\n\nPlease select a period to mark attendance for:`
+
+  // Build period list
+  const periodList: PeriodListItem[] = (periods as any[]).map((p: any) => {
+    const attendance = p.attendance || []
+    const isMarked = attendance.length > 0
+    return {
+      periodId: p.id,
+      periodNumber: p.period_number,
+      startTime: p.start_time?.slice(0, 5) || '',
+      endTime: p.end_time?.slice(0, 5) || '',
+      label: `Period ${p.period_number}`,
+      isMarked,
+      presentCount: isMarked ? attendance.filter((a: any) => a.status === 'Present').length : undefined,
+      absentCount: isMarked ? attendance.filter((a: any) => a.status === 'Absent').length : undefined,
+      className: s.className || undefined,
+      subjectName: p.subjects?.subject_name || undefined,
+    }
+  })
+
+  s.step = 'select_period'
+  return makeResponse(msg, s, 'period_list', { periodList })
+}
+
+// ── Ask Date (Flow 2) ──────────────────────────────────────────
+async function handleAskDate(text: string, s: ChatSession): Promise<ChatResponse> {
+  const validation = validateDate(text)
+
+  if (!validation.valid) {
+    s.failedAttempts++
+    if (s.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      s = createFreshSession(s.userId, s.role)
+      return makeResponse(
+        'Too many invalid entries. Let\'s start over.\n\nWhat would you like to do?',
+        s,
+        'menu',
+        { menuOptions: getMenuOptions(s.role) }
+      )
+    }
+    return makeResponse(
+      `${validation.error}\n\nPlease enter the date in **DD/MM/YYYY** format.`,
+      s,
+      'ask_input'
+    )
+  }
+
+  s.targetDate = validation.isoDate!
+  s.failedAttempts = 0
+
+  // Start the attendance flow (class selection → period listing)
+  return await startAttendanceFlow(s)
+}
+
+// ── Show Periods for Date (Flow 2) ──────────────────────────────
+async function showPeriodsForDate(s: ChatSession): Promise<ChatResponse> {
+  const adminClient = createAdminClient()
+
+  let query = adminClient
+    .from('periods')
+    .select('id, period_number, start_time, end_time, classes(class_name), subjects(subject_name), attendance(id, status)')
+    .eq('date', s.targetDate!)
+    .order('period_number')
+
+  if (s.classSectionId) {
+    query = query.eq('class_id', s.classSectionId)
+  }
+
+  const { data: periods, error } = await query
+
+  if (error || !periods || periods.length === 0) {
+    return makeResponse(
+      `No periods found for ${s.className || 'this class'} on **${formatDateDisplay(s.targetDate!)}**. This might be a non-teaching day or the schedule hasn't been generated.`,
+      { ...s, step: 'ask_date' },
+      'ask_input'
+    )
+  }
+
+  const periodList: PeriodListItem[] = (periods as any[]).map((p: any) => {
+    const attendance = p.attendance || []
+    const isMarked = attendance.length > 0
+    return {
+      periodId: p.id,
+      periodNumber: p.period_number,
+      startTime: p.start_time?.slice(0, 5) || '',
+      endTime: p.end_time?.slice(0, 5) || '',
+      label: `Period ${p.period_number}`,
+      isMarked,
+      presentCount: isMarked ? attendance.filter((a: any) => a.status === 'Present').length : undefined,
+      absentCount: isMarked ? attendance.filter((a: any) => a.status === 'Absent').length : undefined,
+      className: s.className || p.classes?.class_name || undefined,
+      subjectName: p.subjects?.subject_name || undefined,
+    }
+  })
+
+  s.step = 'select_period'
+  return makeResponse(
+    `Here are the periods for **${s.className}** on **${formatDateDisplay(s.targetDate!)}**:\n\nSelect a period to ${s.currentIntent === 'update_previous' ? 'update' : 'mark'} attendance:`,
+    s,
+    'period_list',
+    { periodList }
   )
 }
 
-interface GeminiIntent {
-  intent: 'mark_attendance' | 'help' | 'unknown'
-  periodNumber: number | null
-  presentNames: string[]
-  absentNames: string[]
+// ── Select Period ───────────────────────────────────────────────
+async function handleSelectPeriod(text: string, s: ChatSession): Promise<ChatResponse> {
+  const input = text.trim()
+
+  // Parse period selection: "1", "P1", "Period 1", etc.
+  const periodMatch = input.match(/^(?:period\s*|p\s*)?(\d+)$/i)
+  if (!periodMatch) {
+    s.failedAttempts++
+    if (s.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      s = createFreshSession(s.userId, s.role)
+      return makeResponse(
+        'Too many invalid entries. Let\'s start over.\n\nWhat would you like to do?',
+        s,
+        'menu',
+        { menuOptions: getMenuOptions(s.role) }
+      )
+    }
+    return makeResponse(
+      'Please enter a valid period number (e.g. **1**, **P3**, or **Period 5**).',
+      s,
+      'ask_input'
+    )
+  }
+
+  const periodNum = parseInt(periodMatch[1])
+
+  // Look up the period in the DB
+  const adminClient = createAdminClient()
+  let query = adminClient
+    .from('periods')
+    .select('id, period_number, start_time, end_time, classes(class_name), attendance(id, status)')
+    .eq('date', s.targetDate!)
+    .eq('period_number', periodNum)
+
+  if (s.classSectionId) {
+    query = query.eq('class_id', s.classSectionId)
+  }
+
+  const { data: periods } = await query
+
+  if (!periods || periods.length === 0) {
+    return makeResponse(
+      `Period ${periodNum} doesn't exist for ${formatDateDisplay(s.targetDate!)}. Please select a valid period number from the list.`,
+      s,
+      'ask_input'
+    )
+  }
+
+  const period = periods[0] as any
+  s.periodId = period.id
+  s.periodNumber = periodNum
+  s.periodLabel = `Period ${periodNum} (${period.start_time?.slice(0, 5)}–${period.end_time?.slice(0, 5)})`
+  s.failedAttempts = 0
+
+  // Check if attendance already exists
+  const attendance = period.attendance || []
+  const isAlreadyMarked = attendance.length > 0
+
+  s.step = 'ask_absentees'
+
+  let msg = `Selected **${s.periodLabel}** for **${s.className}** on **${formatDateDisplay(s.targetDate!)}**.`
+
+  if (isAlreadyMarked) {
+    const presentCount = attendance.filter((a: any) => a.status === 'Present').length
+    const absentCount = attendance.filter((a: any) => a.status === 'Absent').length
+    msg += `\n\n⚠️ Attendance is already marked (**${presentCount}** present, **${absentCount}** absent). Submitting will **update** the existing records.`
+  }
+
+  msg += `\n\nPlease list the names of **absent students**, separated by commas (e.g. Rahul Sharma, Priya Singh).\nIf everyone is present, just say **"none"** or **"all present"**.`
+
+  return makeResponse(msg, s, 'ask_input')
 }
 
-async function analyzeIntentWithAI(message: string, explicitPeriod?: number): Promise<GeminiIntent> {
+// ── Handle Absentees Input ──────────────────────────────────────
+async function handleAbsentees(text: string, s: ChatSession): Promise<ChatResponse> {
+  if (!text) {
+    s.failedAttempts++
+    if (s.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      s = createFreshSession(s.userId, s.role)
+      return makeResponse(
+        'Too many empty inputs. Let\'s start over.\n\nWhat would you like to do?',
+        s,
+        'menu',
+        { menuOptions: getMenuOptions(s.role) }
+      )
+    }
+    return makeResponse(
+      'Please enter the names of absent students separated by commas, or say **"all present"** if everyone is here.\n\n_Example: Rahul Sharma, Priya Singh_',
+      s,
+      'ask_input'
+    )
+  }
+
+  // Check for "change period" in Flow 1
+  if (/^change\s*period$/i.test(text.trim())) {
+    s.step = 'select_period'
+    return showPeriodsForDate(s)
+  }
+
+  // "All present" / zero-absentee path
+  if (isAllPresent(text)) {
+    s.resolvedAbsentStudentIds = []
+    s.rawAbsenteeInput = text
+    return await markAttendance(s, [])
+  }
+
+  // Parse names and match against roster
+  const adminClient = createAdminClient()
+  const { data: students } = await adminClient
+    .from('students')
+    .select('id, name, roll_number')
+    .eq('class_id', s.classSectionId!)
+    .eq('status', 'active')
+    .order('roll_number')
+
+  if (!students || students.length === 0) {
+    return makeResponse(
+      `No active students found for ${s.className}. Please check the student roster.`,
+      { ...s, step: 'menu' },
+      'error',
+      { menuOptions: getMenuOptions(s.role) }
+    )
+  }
+
+  const names = parseNameInput(text)
+  if (names.length === 0) {
+    s.failedAttempts++
+    if (s.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      s = createFreshSession(s.userId, s.role)
+      return makeResponse(
+        'Too many invalid entries. Let\'s start over.\n\nWhat would you like to do?',
+        s,
+        'menu',
+        { menuOptions: getMenuOptions(s.role) }
+      )
+    }
+    return makeResponse(
+      'I couldn\'t parse any names from your input. Please enter names separated by commas.\n\n_Example: Rahul Sharma, Priya Singh_',
+      s,
+      'ask_input'
+    )
+  }
+
+  s.rawAbsenteeInput = text
+  s.failedAttempts = 0
+
+  const result = batchMatchNames(names, students as StudentRecord[])
+
+  // All resolved → mark attendance
+  if (result.ambiguous.length === 0 && result.unmatched.length === 0) {
+    const absentIds = result.matched.map(m => m.student.id)
+    s.resolvedAbsentStudentIds = absentIds
+    return await markAttendance(s, absentIds)
+  }
+
+  // Some ambiguous/unmatched → ask for clarification
+  s.unresolvedNames = result.unmatched
+  s.ambiguousNames = result.ambiguous.map(a => ({
+    input: a.input,
+    suggestions: a.suggestions.map(sug => ({
+      id: sug.id,
+      name: sug.name,
+      rollNumber: sug.roll_number,
+    })),
+  }))
+  // Store matched IDs so far
+  s.resolvedAbsentStudentIds = result.matched.map(m => m.student.id)
+
+  s.step = 'clarify_name'
+
+  let msg = ''
+  if (result.matched.length > 0) {
+    msg += `**Matched so far:** ${result.matched.map(m => m.student.name).join(', ')}\n\n`
+  }
+
+  if (result.ambiguous.length > 0) {
+    msg += '**Ambiguous names** — please clarify:\n'
+    for (const a of result.ambiguous) {
+      const options = a.suggestions.map(sug => `${sug.name} (${sug.roll_number})`).join(', ')
+      msg += `• **"${a.input}"** — did you mean: ${options}?\n`
+    }
+    msg += '\n'
+  }
+
+  if (result.unmatched.length > 0) {
+    msg += `**Not found:** ${result.unmatched.join(', ')}\n`
+    msg += '_Please re-enter the correct names or roll numbers for these students._\n'
+  }
+
+  msg += '\nPlease provide the correct names for the above, or say **"skip"** to proceed without them.'
+
+  return makeResponse(msg, s, 'clarification', {
+    clarificationData: {
+      unresolvedNames: result.unmatched,
+      ambiguousNames: s.ambiguousNames,
+      resolvedSoFar: result.matched.map(m => m.student.name),
+    },
+  })
+}
+
+// ── Handle Name Clarification ───────────────────────────────────
+async function handleClarifyName(text: string, s: ChatSession): Promise<ChatResponse> {
+  if (text.toLowerCase().trim() === 'skip') {
+    // Proceed with what we have
+    return await markAttendance(s, s.resolvedAbsentStudentIds)
+  }
+
+  // Fetch roster again
+  const adminClient = createAdminClient()
+  const { data: students } = await adminClient
+    .from('students')
+    .select('id, name, roll_number')
+    .eq('class_id', s.classSectionId!)
+    .eq('status', 'active')
+    .order('roll_number')
+
+  if (!students) {
+    return makeResponse('Failed to fetch student roster.', { ...s, step: 'menu' }, 'error')
+  }
+
+  // Parse the correction input and try to match
+  const names = parseNameInput(text)
+  const result = batchMatchNames(names, students as StudentRecord[])
+
+  // Add newly resolved names
+  for (const m of result.matched) {
+    if (!s.resolvedAbsentStudentIds.includes(m.student.id)) {
+      s.resolvedAbsentStudentIds.push(m.student.id)
+    }
+  }
+
+  // If still ambiguous/unmatched, loop
+  if (result.ambiguous.length > 0 || result.unmatched.length > 0) {
+    s.unresolvedNames = result.unmatched
+    s.ambiguousNames = result.ambiguous.map(a => ({
+      input: a.input,
+      suggestions: a.suggestions.map(sug => ({
+        id: sug.id,
+        name: sug.name,
+        rollNumber: sug.roll_number,
+      })),
+    }))
+
+    let msg = ''
+    if (result.matched.length > 0) {
+      msg += `✓ Resolved: ${result.matched.map(m => m.student.name).join(', ')}\n\n`
+    }
+
+    if (result.ambiguous.length > 0) {
+      msg += 'Still ambiguous:\n'
+      for (const a of result.ambiguous) {
+        const options = a.suggestions.map(sug => `${sug.name} (${sug.roll_number})`).join(', ')
+        msg += `• **"${a.input}"** — ${options}?\n`
+      }
+      msg += '\n'
+    }
+
+    if (result.unmatched.length > 0) {
+      msg += `Still not found: ${result.unmatched.join(', ')}\n`
+    }
+
+    msg += '\nPlease provide corrections, or say **"skip"** to proceed with the names already matched.'
+
+    return makeResponse(msg, s, 'clarification', {
+      clarificationData: {
+        unresolvedNames: result.unmatched,
+        ambiguousNames: s.ambiguousNames,
+        resolvedSoFar: [],
+      },
+    })
+  }
+
+  // All resolved — proceed to mark
+  return await markAttendance(s, s.resolvedAbsentStudentIds)
+}
+
+// ── Mark Attendance ─────────────────────────────────────────────
+async function markAttendance(s: ChatSession, absentIds: number[]): Promise<ChatResponse> {
+  if (!acquireLock()) {
+    return makeResponse(
+      '⏳ Another attendance request is being processed. Please wait a moment and try again.',
+      s,
+      'text'
+    )
+  }
+
+  try {
+    const adminClient = createAdminClient()
+
+    // Fetch all students for the class
+    const { data: students, error: studentErr } = await adminClient
+      .from('students')
+      .select('id, name, roll_number')
+      .eq('class_id', s.classSectionId!)
+      .eq('status', 'active')
+      .order('roll_number')
+
+    if (studentErr || !students || students.length === 0) {
+      releaseLock()
+      return makeResponse(
+        'Failed to fetch student roster. Please try again.',
+        { ...s, step: 'menu' },
+        'error',
+        { menuOptions: getMenuOptions(s.role) }
+      )
+    }
+
+    // Check if attendance already exists
+    const { count: existingCount } = await adminClient
+      .from('attendance')
+      .select('*', { count: 'exact', head: true })
+      .eq('period_id', s.periodId!)
+
+    const isUpdate = !!(existingCount && existingCount > 0)
+
+    const totalAbsent = absentIds.length
+    const totalPresent = students.length - totalAbsent
+    const absentSet = new Set(absentIds)
+    const now = new Date().toISOString()
+
+    const records = (students as any[]).map((st: any) => ({
+      period_id: s.periodId!,
+      student_id: st.id,
+      status: absentSet.has(st.id) ? 'Absent' : 'Present',
+      marked_by: s.userId,
+      ...(isUpdate ? { last_modified_by: s.userId, last_modified_at: now } : {}),
+    }))
+
+    // Execute upsert in background using after()
+    after(async () => {
+      try {
+        const { error: upsertErr } = await adminClient
+          .from('attendance')
+          .upsert(records, { onConflict: 'period_id,student_id' })
+        if (upsertErr) {
+          console.error('[Chatbot Background Upsert Error]:', upsertErr.message)
+        }
+      } catch (err) {
+        console.error('[Chatbot Background Exception]:', err)
+      } finally {
+        releaseLock()
+      }
+    })
+
+    // Build success message
+    const absentNames = (students as any[])
+      .filter((st: any) => absentSet.has(st.id))
+      .map((st: any) => st.name)
+
+    const actionLabel = isUpdate ? 'Updated' : 'Marked'
+
+    // Try to get a conversational response from AI
+    let finalMsg = ''
+    const baseInfo = `${actionLabel} attendance for ${s.periodLabel} — ${s.className} on ${formatDateDisplay(s.targetDate!)}.
+Present: ${totalPresent}, Absent: ${totalAbsent} of ${students.length} students.${absentNames.length > 0 ? ` Absent: ${absentNames.join(', ')}.` : ' Everyone is present!'}${isUpdate ? ' (Updated — changes saved to audit trail.)' : ''}`
+
+    try {
+      finalMsg = await generateConversationalResponse(baseInfo, isUpdate)
+    } catch {
+      finalMsg = baseInfo
+    }
+
+    if (!finalMsg) finalMsg = baseInfo
+
+    s.attendanceWritten = true
+    s.step = 'confirm'
+
+    const confirmData: ConfirmationData = {
+      periodLabel: s.periodLabel!,
+      className: s.className!,
+      date: formatDateDisplay(s.targetDate!),
+      totalPresent,
+      totalAbsent,
+      totalStudents: students.length,
+      absentNames,
+      isUpdate,
+    }
+
+    return makeResponse(
+      finalMsg + '\n\n**Is everything correct, or would you like to update something?**',
+      s,
+      'confirmation',
+      { confirmationData: confirmData }
+    )
+  } catch (err: any) {
+    releaseLock()
+    return makeResponse(
+      `Failed to save attendance: ${err.message || 'Unknown error'}. Please try again.\n\n⚠️ **No data was written.** Your submission was not saved.`,
+      s,
+      'error'
+    )
+  }
+}
+
+// ── Handle Confirmation ─────────────────────────────────────────
+async function handleConfirmation(text: string, s: ChatSession): Promise<ChatResponse> {
+  const t = text.toLowerCase().trim()
+
+  if (t === 'correct' || t === 'yes' || t === 'done' || t === 'ok' || t === 'looks good' || t === 'confirm' || t === 'y') {
+    s = createFreshSession(s.userId, s.role)
+    return makeResponse(
+      'Great, attendance saved! ✓\n\nWhat would you like to do next?',
+      s,
+      'menu',
+      { menuOptions: getMenuOptions(s.role) }
+    )
+  }
+
+  if (t === 'update' || t === 'edit' || t === 'change' || t === 'modify' || t === 'fix' || t === 'no') {
+    // Re-open absentee list without re-asking date/period
+    s.step = 'update_loop'
+    s.attendanceWritten = false
+    s.resolvedAbsentStudentIds = []
+    s.unresolvedNames = []
+    s.ambiguousNames = []
+    return makeResponse(
+      `Reopening attendance for **${s.periodLabel}** — **${s.className}**.\n\nPlease list the names of **absent students** again (comma-separated), or say **"all present"**.`,
+      s,
+      'ask_input'
+    )
+  }
+
+  // Unrecognized response
+  return makeResponse(
+    'Please reply **"correct"** to confirm, or **"update"** to make changes.',
+    s,
+    'text'
+  )
+}
+
+// ── Handle Overwrite Prompt ─────────────────────────────────────
+async function handleOverwrite(text: string, s: ChatSession): Promise<ChatResponse> {
+  const t = text.toLowerCase().trim()
+
+  if (t === 'overwrite' || t === 'yes' || t === 'update' || t === 'replace' || t === 'y') {
+    s.step = 'ask_absentees'
+    return makeResponse(
+      `Alright, updating attendance for **${s.periodLabel}**.\n\nPlease list the names of **absent students**, separated by commas.\nIf everyone is present, say **"none"** or **"all present"**.`,
+      s,
+      'ask_input'
+    )
+  }
+
+  if (t === 'cancel' || t === 'no' || t === 'keep' || t === 'n') {
+    s = createFreshSession(s.userId, s.role)
+    return makeResponse(
+      'Keeping the existing attendance unchanged.\n\nWhat would you like to do?',
+      s,
+      'menu',
+      { menuOptions: getMenuOptions(s.role) }
+    )
+  }
+
+  return makeResponse(
+    'Please reply **"overwrite"** to replace the existing attendance, or **"cancel"** to keep it unchanged.',
+    s,
+    'text'
+  )
+}
+
+// ── Flow 3: Analytics Query ─────────────────────────────────────
+async function handleAnalyticsQuery(text: string, s: ChatSession): Promise<ChatResponse> {
+  if (!text) {
+    return makeResponse(
+      'What would you like to know? Ask me about attendance statistics, student records, or any other data.',
+      s,
+      'ask_input'
+    )
+  }
+
+  // Common help/capability questions
+  const t = text.toLowerCase().trim()
+  if (t === 'help' || t === 'what can you do' || t === 'what can you do?' || t === 'info') {
+    return makeResponse(
+      '**I can help you with:**\n\n' +
+      '• **Attendance statistics** — "How many times was Priya absent this month?"\n' +
+      '• **Daily summaries** — "Show attendance for today" or "What\'s the attendance for Period 3?"\n' +
+      '• **Student lookups** — "Who was absent on 15/09/2026?"\n' +
+      '• **Trends** — "Who are the most absent students this week?"\n\n' +
+      'Just ask a question naturally!',
+      s,
+      'text'
+    )
+  }
+
+  try {
+    // Use AI to understand the query and extract entities
+    const queryAnalysis = await analyzeQueryWithAI(text)
+
+    if (!queryAnalysis || queryAnalysis.needsDb === false) {
+      // Answer directly without DB
+      return makeResponse(
+        queryAnalysis?.directAnswer || 'I can help you with attendance data. Could you be more specific about what you\'d like to know?',
+        { ...s, step: 'query_intent' },
+        'text'
+      )
+    }
+
+    // Execute the DB query based on analysis
+    const adminClient = createAdminClient()
+    const result = await executeAnalyticsQuery(adminClient, queryAnalysis, s)
+
+    // Return to query mode for follow-ups
+    s.step = 'query_intent'
+
+    return makeResponse(
+      result.message,
+      s,
+      result.hasData ? 'analytics' : 'text',
+      result.hasData ? { analyticsData: result.analyticsData } : undefined
+    )
+  } catch (err: any) {
+    console.error('[Analytics Query Error]:', err)
+    return makeResponse(
+      'Sorry, I had trouble understanding that query. Could you rephrase it?\n\n**Examples:**\n• "How many times was Rahul absent this month?"\n• "Show today\'s attendance"',
+      { ...s, step: 'query_intent' },
+      'text'
+    )
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════
+
+function makeResponse(
+  message: string,
+  session: ChatSession,
+  messageType: ChatResponse['messageType'],
+  extra?: Partial<ChatResponse>
+): ChatResponse {
+  return {
+    message,
+    session: { ...session, lastActivityAt: Date.now() },
+    messageType,
+    ...extra,
+  }
+}
+
+function getMenuOptions(role: string): MenuOption[] {
+  const canMark = role === 'admin' || role === 'instructor'
+  return [
+    {
+      id: 'mark_today',
+      label: 'Mark today\'s attendance',
+      description: 'Quick mark for the current or selected period',
+      icon: 'mark',
+      disabled: !canMark,
+      disabledReason: canMark ? undefined : 'Only instructors and admins can mark attendance',
+    },
+    {
+      id: 'update_previous',
+      label: 'Update previous attendance',
+      description: 'Edit attendance for a past date and period',
+      icon: 'update',
+      disabled: !canMark,
+      disabledReason: canMark ? undefined : 'Only instructors and admins can update attendance',
+    },
+    {
+      id: 'general_query',
+      label: 'Ask a question',
+      description: 'Query attendance data, statistics, and reports',
+      icon: 'query',
+    },
+  ]
+}
+
+function detectMenuIntent(text: string): 'mark_today' | 'update_previous' | 'general_query' | null {
+  const t = text.toLowerCase().trim()
+
+  // Explicit selections
+  if (t === '1' || t === 'mark' || /mark\s*(today|attendance)/i.test(t) || t === 'mark_today') return 'mark_today'
+  if (t === '2' || t === 'update' || /update\s*(previous|past|old)/i.test(t) || t === 'update_previous' || /edit\s*(past|previous)/i.test(t)) return 'update_previous'
+  if (t === '3' || t === 'query' || t === 'ask' || t === 'question' || t === 'general_query' || t === 'analytics') return 'general_query'
+
+  return null
+}
+
+// ── Date Utilities ──────────────────────────────────────────────
+
+function getTodayIST(): string {
+  const now = new Date()
+  const istOffset = 5.5 * 60 * 60000
+  const ist = new Date(now.getTime() + istOffset + now.getTimezoneOffset() * 60000)
+  return ist.toISOString().split('T')[0]
+}
+
+function formatDateDisplay(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-')
+  return `${d}/${m}/${y}`
+}
+
+interface DateValidation {
+  valid: boolean
+  isoDate?: string
+  error?: string
+}
+
+function validateDate(input: string): DateValidation {
+  const trimmed = input.trim()
+
+  // Accept DD/MM/YYYY or DD-MM-YYYY
+  const dateMatch = trimmed.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/)
+  if (!dateMatch) {
+    return { valid: false, error: `**"${trimmed}"** is not a valid date format. Please use **DD/MM/YYYY** (e.g. 21/09/2026).` }
+  }
+
+  const day = parseInt(dateMatch[1])
+  const month = parseInt(dateMatch[2])
+  const year = parseInt(dateMatch[3])
+
+  // Basic range checks
+  if (month < 1 || month > 12) {
+    return { valid: false, error: `Month **${month}** is invalid. Must be 1–12.` }
+  }
+  if (day < 1 || day > 31) {
+    return { valid: false, error: `Day **${day}** is invalid.` }
+  }
+
+  // Check if it's a real date
+  const dateObj = new Date(year, month - 1, day)
+  if (dateObj.getFullYear() !== year || dateObj.getMonth() !== month - 1 || dateObj.getDate() !== day) {
+    return { valid: false, error: `**${trimmed}** is not a valid calendar date.` }
+  }
+
+  const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+  // Not in the future
+  const today = getTodayIST()
+  if (isoDate > today) {
+    return { valid: false, error: `**${trimmed}** is in the future. You can only update attendance for past or today's dates.` }
+  }
+
+  // Not before academic year start
+  if (isoDate < ACADEMIC_YEAR_START) {
+    return { valid: false, error: `**${trimmed}** is before the academic year started (${formatDateDisplay(ACADEMIC_YEAR_START)}).` }
+  }
+
+  // Check if it's a teaching day (not Sunday)
+  const dayOfWeek = dateObj.getDay()
+  if (!ACTIVE_DAYS.includes(dayOfWeek)) {
+    return { valid: false, error: `**${trimmed}** is a Sunday (non-teaching day). Please enter a Monday–Saturday date.` }
+  }
+
+  return { valid: true, isoDate }
+}
+
+// ── AI Helpers ──────────────────────────────────────────────────
+
+interface QueryAnalysis {
+  needsDb: boolean
+  directAnswer?: string
+  queryType?: 'student_absence_count' | 'daily_summary' | 'absent_list' | 'most_absent' | 'attendance_percentage' | 'general'
+  studentName?: string
+  className?: string
+  dateRange?: { start: string; end: string }
+  specificDate?: string
+  periodNumber?: number
+}
+
+async function analyzeQueryWithAI(message: string): Promise<QueryAnalysis | null> {
+  const today = getTodayIST()
   const prompt = `
-You are an AI assistant for a school attendance system.
-Analyze the user's message and extract attendance info.
-If the user specifies an explicit period number, use it. Otherwise, extract it from the text (1 to 7).
-If the user says "all present" or "none absent", set presentNames to [] and absentNames to [].
-If the user lists present students (e.g., "present: John, Jane", "only Rahul was present"), put them in presentNames.
-If the user lists absent students (e.g., "absent: Rahul"), put them in absentNames.
-If the user just lists names without specifying present/absent (e.g., "Period 3 - John, Jane"), assume they are ABSENT students (this is the default behavior).
-Explicit period selected from UI: ${explicitPeriod || 'None'}
-User message: "${message}"
+You are an AI assistant for a school attendance system. Analyze the user's query and extract structured information.
+Today's date: ${today}
 
-Respond strictly with a JSON object (no markdown, no formatting) matching this schema:
+User query: "${message}"
+
+Respond with JSON only (no markdown, no code blocks):
 {
-  "intent": "mark_attendance" | "help" | "unknown",
-  "periodNumber": number | null,
-  "presentNames": string[],
-  "absentNames": string[]
+  "needsDb": true/false,
+  "directAnswer": "string if needsDb is false",
+  "queryType": "student_absence_count" | "daily_summary" | "absent_list" | "most_absent" | "attendance_percentage" | "general",
+  "studentName": "string or null",
+  "className": "string or null",
+  "dateRange": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"} or null,
+  "specificDate": "YYYY-MM-DD" or null,
+  "periodNumber": number or null
 }
+
+Date range hints:
+- "this month" = first day of current month to today
+- "this week" = Monday of current week to today
+- "today" = just today's date
+- "last week" = previous Monday to Sunday
+- "yesterday" = yesterday's date
 `
 
-  // 1. Try Gemini (gemini-1.5-flash-8b) — reuse singleton client (BN-7)
   const gemini = getGeminiClient()
   if (gemini) {
     try {
       const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash-8b' })
       const result = await model.generateContent(prompt)
       const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim()
-      return JSON.parse(text) as GeminiIntent
-    } catch (error) {
-      console.error('Gemini analysis failed, falling back to Groq:', error)
+      return JSON.parse(text) as QueryAnalysis
+    } catch (e) {
+      console.error('Gemini query analysis failed:', e)
     }
   }
 
-  // 2. Try Groq (llama3-8b-8192) — reuse singleton client (BN-7)
   const groq = getGroqClient()
   if (groq) {
     try {
@@ -165,456 +1267,381 @@ Respond strictly with a JSON object (no markdown, no formatting) matching this s
         response_format: { type: 'json_object' },
       })
       const text = completion.choices[0]?.message?.content || '{}'
-      return JSON.parse(text) as GeminiIntent
-    } catch (error) {
-      console.error('Groq analysis failed, falling back to regex:', error)
+      return JSON.parse(text) as QueryAnalysis
+    } catch (e) {
+      console.error('Groq query analysis failed:', e)
     }
   }
 
-  // 3. Fallback to Regex
-  const parsed = parseMessageFallback(message, explicitPeriod)
-  return { intent: isHelpRequest(message) ? 'help' : 'mark_attendance', ...parsed, presentNames: [] }
+  // Fallback: basic keyword analysis
+  return fallbackQueryAnalysis(message)
 }
 
-/**
- * Process attendance messages with:
- * - Concurrency locking (1 request at a time)
- * - Access for ALL instructors
- * - High-speed response with database update in background via after()
- * - Optional explicit period number (e.g. from UI period button selection)
- */
+function fallbackQueryAnalysis(text: string): QueryAnalysis {
+  const t = text.toLowerCase()
+  const today = getTodayIST()
+
+  if (t.includes('today') || t.includes('attendance')) {
+    return { needsDb: true, queryType: 'daily_summary', specificDate: today }
+  }
+  if (t.includes('absent') && (t.includes('most') || t.includes('top'))) {
+    return { needsDb: true, queryType: 'most_absent', dateRange: getMonthRange(today) }
+  }
+  if (t.includes('absent') || t.includes('absence')) {
+    // Try to extract a student name (basic)
+    return { needsDb: true, queryType: 'student_absence_count', dateRange: getMonthRange(today) }
+  }
+
+  return { needsDb: true, queryType: 'general' }
+}
+
+function getMonthRange(today: string): { start: string; end: string } {
+  const [y, m] = today.split('-')
+  return { start: `${y}-${m}-01`, end: today }
+}
+
+async function executeAnalyticsQuery(
+  adminClient: any,
+  analysis: QueryAnalysis,
+  s: ChatSession
+): Promise<{ message: string; hasData: boolean; analyticsData?: any }> {
+  switch (analysis.queryType) {
+    case 'student_absence_count': {
+      if (!analysis.studentName) {
+        return { message: 'Which student are you asking about? Please include the student\'s name in your question.', hasData: false }
+      }
+
+      // Find the student
+      const { data: students } = await adminClient
+        .from('students')
+        .select('id, name, roll_number, class_id')
+        .ilike('name', `%${analysis.studentName}%`)
+
+      if (!students || students.length === 0) {
+        return { message: `I couldn't find a student named "${analysis.studentName}". Please check the spelling.`, hasData: false }
+      }
+
+      const student = students[0]
+      const dateRange = analysis.dateRange || getMonthRange(getTodayIST())
+
+      const { data: absences } = await adminClient
+        .from('attendance')
+        .select('id, period_id, status, periods(date, period_number, start_time, end_time)')
+        .eq('student_id', student.id)
+        .eq('status', 'Absent')
+        .gte('periods.date', dateRange.start)
+        .lte('periods.date', dateRange.end)
+
+      const validAbsences = (absences || []).filter((a: any) => a.periods !== null)
+      const count = validAbsences.length
+
+      if (count === 0) {
+        return {
+          message: `**${student.name}** has no absences from ${formatDateDisplay(dateRange.start)} to ${formatDateDisplay(dateRange.end)}. 🎉`,
+          hasData: false,
+        }
+      }
+
+      const dateList = validAbsences
+        .map((a: any) => `• ${formatDateDisplay(a.periods.date)} — Period ${a.periods.period_number}`)
+        .join('\n')
+
+      return {
+        message: `**${student.name}** has been absent **${count} time${count !== 1 ? 's' : ''}** from ${formatDateDisplay(dateRange.start)} to ${formatDateDisplay(dateRange.end)}:\n\n${dateList}`,
+        hasData: true,
+        analyticsData: {
+          summary: `${count} absences`,
+          rows: validAbsences.map((a: any) => ({
+            Date: formatDateDisplay(a.periods.date),
+            Period: `P${a.periods.period_number}`,
+            Time: `${a.periods.start_time?.slice(0, 5)}–${a.periods.end_time?.slice(0, 5)}`,
+          })),
+          columns: ['Date', 'Period', 'Time'],
+        },
+      }
+    }
+
+    case 'daily_summary': {
+      const date = analysis.specificDate || getTodayIST()
+
+      let query = adminClient
+        .from('periods')
+        .select('id, period_number, start_time, end_time, classes(class_name), subjects(subject_name), attendance(id, status)')
+        .eq('date', date)
+        .order('period_number')
+
+      // Scope to instructor's classes if not admin
+      if (s.role === 'instructor') {
+        query = query.eq('instructor_id', s.userId)
+      }
+
+      const { data: periods } = await query
+
+      if (!periods || periods.length === 0) {
+        return { message: `No schedule found for ${formatDateDisplay(date)}.`, hasData: false }
+      }
+
+      let msg = `**Attendance Summary for ${formatDateDisplay(date)}:**\n\n`
+      const rows: any[] = []
+
+      for (const p of periods as any[]) {
+        const att = p.attendance || []
+        const present = att.filter((a: any) => a.status === 'Present').length
+        const absent = att.filter((a: any) => a.status === 'Absent').length
+        const total = att.length
+        const marked = total > 0
+
+        const status = marked ? `✅ ${present}P / ${absent}A` : '— not marked'
+        msg += `• **Period ${p.period_number}** (${p.start_time?.slice(0, 5)}–${p.end_time?.slice(0, 5)}) — ${p.classes?.class_name || ''} — ${status}\n`
+
+        rows.push({
+          Period: `P${p.period_number}`,
+          Time: `${p.start_time?.slice(0, 5)}–${p.end_time?.slice(0, 5)}`,
+          Class: p.classes?.class_name || '',
+          Subject: p.subjects?.subject_name || '',
+          Status: marked ? `${present}P / ${absent}A` : 'Not marked',
+        })
+      }
+
+      return {
+        message: msg,
+        hasData: true,
+        analyticsData: {
+          summary: `${periods.length} periods`,
+          rows,
+          columns: ['Period', 'Time', 'Class', 'Subject', 'Status'],
+        },
+      }
+    }
+
+    case 'absent_list': {
+      const date = analysis.specificDate || getTodayIST()
+      let periodFilter = ''
+
+      let query = adminClient
+        .from('attendance')
+        .select('id, status, students(name, roll_number), periods(date, period_number, start_time, class_id)')
+        .eq('status', 'Absent')
+        .eq('periods.date', date)
+
+      if (analysis.periodNumber) {
+        query = query.eq('periods.period_number', analysis.periodNumber)
+        periodFilter = ` for Period ${analysis.periodNumber}`
+      }
+
+      const { data: absentRecords } = await query
+
+      const validRecords = (absentRecords || []).filter((r: any) => r.periods !== null && r.students !== null)
+
+      if (validRecords.length === 0) {
+        return { message: `No absentees found on ${formatDateDisplay(date)}${periodFilter}. 🎉`, hasData: false }
+      }
+
+      const names = validRecords.map((r: any) => `• ${r.students.name} (${r.students.roll_number}) — Period ${r.periods.period_number}`)
+
+      return {
+        message: `**Absent students on ${formatDateDisplay(date)}${periodFilter}:**\n\n${names.join('\n')}`,
+        hasData: true,
+        analyticsData: {
+          summary: `${validRecords.length} absences`,
+          rows: validRecords.map((r: any) => ({
+            Student: r.students.name,
+            'Roll No': r.students.roll_number,
+            Period: `P${r.periods.period_number}`,
+          })),
+          columns: ['Student', 'Roll No', 'Period'],
+        },
+      }
+    }
+
+    case 'most_absent': {
+      const dateRange = analysis.dateRange || getMonthRange(getTodayIST())
+
+      const { data: absences } = await adminClient
+        .from('attendance')
+        .select('student_id, status, students(name, roll_number, class_id, classes(class_name)), periods(date)')
+        .eq('status', 'Absent')
+        .gte('periods.date', dateRange.start)
+        .lte('periods.date', dateRange.end)
+
+      const validAbsences = (absences || []).filter((a: any) => a.periods !== null && a.students !== null)
+
+      // Count per student
+      const counts = new Map<number, { name: string; roll: string; className: string; count: number }>()
+      for (const a of validAbsences as any[]) {
+        const existing = counts.get(a.student_id)
+        if (existing) {
+          existing.count++
+        } else {
+          counts.set(a.student_id, {
+            name: a.students.name,
+            roll: a.students.roll_number,
+            className: a.students.classes?.class_name || '',
+            count: 1,
+          })
+        }
+      }
+
+      const sorted = [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 10)
+
+      if (sorted.length === 0) {
+        return { message: `No absences recorded from ${formatDateDisplay(dateRange.start)} to ${formatDateDisplay(dateRange.end)}.`, hasData: false }
+      }
+
+      let msg = `**Most absent students (${formatDateDisplay(dateRange.start)} — ${formatDateDisplay(dateRange.end)}):**\n\n`
+      sorted.forEach((s, i) => {
+        msg += `${i + 1}. **${s.name}** (${s.roll}) — ${s.className} — **${s.count}** absences\n`
+      })
+
+      return {
+        message: msg,
+        hasData: true,
+        analyticsData: {
+          summary: `Top ${sorted.length} most absent`,
+          rows: sorted.map((s, i) => ({
+            '#': i + 1,
+            Student: s.name,
+            'Roll No': s.roll,
+            Class: s.className,
+            Absences: s.count,
+          })),
+          columns: ['#', 'Student', 'Roll No', 'Class', 'Absences'],
+        },
+      }
+    }
+
+    default: {
+      // General query — try to give a helpful response
+      return {
+        message: 'I\'m not sure how to answer that specific question yet. Here are some things I can help with:\n\n' +
+          '• **"How many times was [student] absent this month?"**\n' +
+          '• **"Show today\'s attendance"**\n' +
+          '• **"Who was absent today?"**\n' +
+          '• **"Who are the most absent students?"**',
+        hasData: false,
+      }
+    }
+  }
+}
+
+async function generateConversationalResponse(baseInfo: string, isUpdate: boolean): Promise<string> {
+  const prompt = `
+You are a friendly, concise AI assistant for a school attendance system.
+You just ${isUpdate ? 'updated' : 'marked'} attendance. Rewrite the following into a warm, natural response.
+Keep all factual data (period, class, present/absent counts, names). Be concise — max 3-4 lines.
+Do not use markdown code blocks. Use bold (**text**) for emphasis.${isUpdate ? ' Mention this was an update and changes are saved.' : ''}
+
+Info: ${baseInfo}
+`
+
+  const gemini = getGeminiClient()
+  if (gemini) {
+    try {
+      const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash-8b' })
+      const result = await model.generateContent(prompt)
+      const text = result.response.text().trim()
+      if (text) return text
+    } catch (e) {
+      console.error('Gemini conversational gen failed:', e)
+    }
+  }
+
+  const groq = getGroqClient()
+  if (groq) {
+    try {
+      const completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama3-8b-8192',
+        temperature: 0.7,
+      })
+      return completion.choices[0]?.message?.content?.trim() || ''
+    } catch (e) {
+      console.error('Groq conversational gen failed:', e)
+    }
+  }
+
+  return ''
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LEGACY COMPAT: Keep old processAttendanceMessage for transition
+// ═══════════════════════════════════════════════════════════════════
+
 export async function processAttendanceMessage(
   message: string,
   explicitPeriodNumber?: number
 ): Promise<ChatbotResult> {
-  // BN-5/6: skipRelease flag lets us avoid double-release when the lock was
-  // never acquired (e.g., concurrent-rejection fast path).
-  const fail = (msg: string, isHelp = false, releaseLockOnReturn = true): ChatbotResult => {
-    if (releaseLockOnReturn) releaseLock()
-    return {
-      success: false,
-      message: msg,
-      matched: [],
-      unmatched: [],
-      ambiguous: [],
-      totalPresent: 0,
-      totalAbsent: 0,
-      isHelp,
-    }
+  // Legacy wrapper — create a temporary session and route through the new engine
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { success: false, message: 'Not authenticated', matched: [], unmatched: [], ambiguous: [], totalPresent: 0, totalAbsent: 0 }
   }
 
-  // BN-5/6: Acquire the lock before entering the try block. The finally clause
-  // guarantees releaseLock() runs on ALL non-background exit paths, even on
-  // unexpected throws from auth/DB calls.
-  if (!acquireLock()) {
-    return fail(
-      '⏳ Another attendance request is currently being processed. Only one request is served at a time. Please wait a moment and try again.',
-      false,
-      false /* skipRelease — lock was never acquired */
-    )
-  }
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const role = ((profile as any)?.role || 'instructor') as 'admin' | 'instructor'
 
-  try {
-    const trimmed = message.trim()
+  // Build a session that's pre-configured for marking today
+  const s = createFreshSession(user.id, role)
+  s.currentIntent = 'mark_today'
+  s.targetDate = getTodayIST()
+  s.periodNumber = explicitPeriodNumber || null
 
-    // ── 1. Help / Format Guide Detection ─────────────────────────
-    const currentPeriod = getCurrentPeriod()
-    const activePeriodNum = currentPeriod?.period_number || null
-
-    if (!trimmed || isHelpRequest(trimmed)) {
-      const guide = await getFormatGuide(activePeriodNum)
-      return fail(guide, true)
-    }
-
-    // ── 2. Authenticate & Profile Check ──────────────────────────
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return fail('Not authenticated. Please log in again.')
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, full_name')
-      .eq('id', user.id)
-      .single()
-    if (!profile) return fail('Profile not found.')
-
-    // All instructors and admins are allowed to use Quick Mark
-    const role = (profile as any).role
-    if (role !== 'admin' && role !== 'instructor') {
-      return fail('Only instructors and administrators can mark attendance.')
-    }
-
-    // ── 3. Parse Message & Resolve Period (LLM) ────────────────────────
-    const parsed = await analyzeIntentWithAI(trimmed, explicitPeriodNumber)
-
-    if (parsed.intent === 'help' || parsed.intent === 'unknown') {
-      const guide = await getFormatGuide(activePeriodNum)
-      return fail(guide, true)
-    }
-
-    // If still no period number, fallback to current period if active
-    if (!parsed.periodNumber) {
-      if (activePeriodNum) {
-        parsed.periodNumber = activePeriodNum
-      } else {
-        const guide = await getFormatGuide(null)
-        return fail(
-          'Could not determine which period to mark attendance for.\n\n' +
-          guide +
-          '\n\n**Select a period button above or enter the period number (e.g. `Period 1 - ...`).**',
-          true
-        )
-      }
-    }
-
-    if (parsed.periodNumber < 1 || parsed.periodNumber > 7) {
-      return fail(`Period number must be between 1 and 7. You entered: ${parsed.periodNumber}`)
-    }
-
-    // ── 4. Find Today's Period ───────────────────────────────────
+  if (explicitPeriodNumber) {
+    // The old flow had an explicit period selected via chip
     const adminClient = createAdminClient()
-    const today = new Date().toISOString().split('T')[0]
-
-    const { data: periods, error: periodErr } = await adminClient
+    const { data: periods } = await adminClient
       .from('periods')
-      .select('id, class_id, instructor_id, period_number, start_time, end_time, classes(class_name)')
-      .eq('date', today)
-      .eq('period_number', parsed.periodNumber)
+      .select('id, class_id, period_number, start_time, end_time, classes(class_name)')
+      .eq('date', s.targetDate)
+      .eq('period_number', explicitPeriodNumber)
 
-    if (periodErr || !periods || periods.length === 0) {
-      return fail(
-        `No Period ${parsed.periodNumber} schedule found for today (${today}).\n` +
-        'Please ensure today\'s daily schedule has been generated.'
-      )
+    if (periods && periods.length > 0) {
+      const period = periods[0] as any
+      s.periodId = period.id
+      s.classSectionId = period.class_id
+      s.className = period.classes?.class_name || 'Class 1'
+      s.periodLabel = `Period ${explicitPeriodNumber} (${period.start_time?.slice(0, 5)}–${period.end_time?.slice(0, 5)})`
+      s.step = 'ask_absentees'
+
+      // Process the message as absentee input
+      const response = await handleAbsentees(message, s)
+      return chatResponseToLegacy(response)
     }
+  }
 
-    // Single class system: use the period for today
-    const period: any = periods[0]
-    const periodLabel = `Period ${parsed.periodNumber} (${period.start_time?.slice(0, 5)}–${period.end_time?.slice(0, 5)})`
-    const className = period.classes?.class_name || 'Class 1'
+  // Fallback: route through the new engine
+  const response = await processChatMessage(message, s)
+  return chatResponseToLegacy(response)
+}
 
-    // ── 5. Check if Attendance is Already Marked (for update tracking) ─────
-    const { count: attendanceCount } = await adminClient
-      .from('attendance')
-      .select('*', { count: 'exact', head: true })
-      .eq('period_id', period.id)
-
-    const isUpdate = !!(attendanceCount && attendanceCount > 0)
-
-    // ── 6. Fetch Active Students for the Class ───────────────────
-    const { data: students, error: studentErr } = await adminClient
-      .from('students')
-      .select('id, name, roll_number')
-      .eq('class_id', period.class_id)
-      .eq('status', 'active')
-      .order('roll_number')
-
-    if (studentErr || !students || students.length === 0) {
-      return fail(`No active students found for ${className}.`)
-    }
-
-    // ── 7. Match Students In-Memory ───────────────────────
-    const absentIds: number[] = []
-    const matchedAbsent: string[] = []
-    const matchedPresent: string[] = []
-    const unmatched: string[] = []
-    const ambiguous: { input: string; suggestions: string[] }[] = []
-
-    // Logic: If user specified present list ONLY, everyone else is absent
-    if (parsed.presentNames.length > 0 && parsed.absentNames.length === 0) {
-      const presentIdSet = new Set<number>() // BN-10: Set for O(1) lookup below
-      for (const inputName of parsed.presentNames) {
-        const match = matchStudent(inputName, students)
-        if (match.type === 'exact') {
-          presentIdSet.add(match.student!.id)
-          matchedPresent.push(match.student!.name)
-        } else if (match.type === 'ambiguous') {
-          ambiguous.push({
-            input: inputName,
-            suggestions: match.suggestions!.map((s) => s.name),
-          })
-        } else {
-          unmatched.push(inputName)
-        }
-      }
-
-      // BN-10: O(1) Set.has instead of O(n) Array.includes per student
-      for (const s of students) {
-        if (!presentIdSet.has(s.id)) {
-          absentIds.push(s.id)
-        }
-      }
-    } else {
-      // Logic: User specified absent list (and optionally present list, but absent list takes precedence for calculating absences)
-      for (const inputName of parsed.absentNames) {
-        const match = matchStudent(inputName, students)
-        if (match.type === 'exact') {
-          absentIds.push(match.student!.id)
-          matchedAbsent.push(match.student!.name)
-        } else if (match.type === 'ambiguous') {
-          ambiguous.push({
-            input: inputName,
-            suggestions: match.suggestions!.map((s) => s.name),
-          })
-        } else {
-          unmatched.push(inputName)
-        }
-      }
-    }
-
-    // If ambiguous matches exist, prompt user for clarification before marking
-    if (ambiguous.length > 0) {
-      const ambigLines = ambiguous
-        .map((a) => `• **"${a.input}"** — did you mean: ${a.suggestions.join(', ')}?`)
-        .join('\n')
-
-      // BN-5/6: Release lock on this early-return path (not background-scheduled)
-      releaseLock()
-      _backgroundScheduled = true // prevent double-release in finally
-      return {
-        success: false,
-        message:
-          `Some student names match multiple people. Please use the full name or roll number:\n\n${ambigLines}\n\n` +
-          (matchedAbsent.length > 0 ? `Matched so far: ${matchedAbsent.join(', ')}` : ''),
-        matched: matchedAbsent,
-        unmatched,
-        ambiguous,
-        totalPresent: 0,
-        totalAbsent: 0,
-        periodInfo: periodLabel,
-      }
-    }
-
-    // ── 8. Prepare Attendance Records ───────────────────────────
-    const totalAbsent = absentIds.length
-    const totalPresent = students.length - totalAbsent
-    const now = new Date().toISOString()
-    // BN-9: Set for O(1) membership check inside .map
-    const absentIdSet = new Set(absentIds)
-
-    const records = students.map((s: any) => ({
-      period_id: period.id,
-      student_id: s.id,
-      status: absentIdSet.has(s.id) ? 'Absent' : 'Present',
-      marked_by: user.id,
-      ...(isUpdate
-        ? { last_modified_by: user.id, last_modified_at: now }
-        : {}),
-    }))
-
-    // ── 9. Execute Database Upsert in Background ─────────────────
-    // BN-5/6: Mark the flag BEFORE calling after() so the finally block
-    // skips its releaseLock() — the background task's own finally owns it.
-    _backgroundScheduled = true
-    after(async () => {
-      try {
-        const { error: upsertErr } = await adminClient
-          .from('attendance')
-          .upsert(records, { onConflict: 'period_id,student_id' })
-
-        if (upsertErr) {
-          console.error('[Quick Mark Background Upsert Error]:', upsertErr.message)
-        }
-      } catch (err) {
-        console.error('[Quick Mark Background Exception]:', err)
-      } finally {
-        releaseLock()
-      }
-    })
-
-    // ── 10. Instant Response to User (Conversational) ──────────────
-    const actionLabel = isUpdate ? 'Updated' : 'Marked'
-    let baseMsg = `${actionLabel} **${periodLabel}** — ${className}\n\n`
-    baseMsg += `**${totalPresent}** present · **${totalAbsent}** absent of ${students.length}`
-    if (isUpdate) {
-      baseMsg += `\n\n_(Attendance updated — changes logged in audit trail)_`
-    }
-
-    if (matchedAbsent.length > 0) {
-      baseMsg += `\n\n**Absent:** ${matchedAbsent.join(', ')}`
-    } else if (matchedPresent.length > 0 && parsed.absentNames.length === 0) {
-      baseMsg += `\n\n**Present list marked:** ${matchedPresent.join(', ')}`
-    }
-
-    if (unmatched.length > 0) {
-      baseMsg += `\n\n**Could not find:** ${unmatched.join(', ')}`
-    }
-
-    if (totalAbsent === 0) {
-      baseMsg += '\n\n**All students marked present.**'
-    }
-
-    let finalMsg = baseMsg;
-
-    // Use AI for a conversational final response if API keys exist and no errors
-    if (unmatched.length === 0) {
-      const chatPrompt = `
-You are a friendly, conversational AI assistant for a school attendance system.
-You just ${isUpdate ? 'updated' : 'marked'} attendance. Rewrite the following status message to be warm, natural, and conversational, while keeping all the factual info (Period, Class, Present count, Absent count, and names). Do not add markdown code blocks. Keep it concise.${isUpdate ? ' Mention that this was an update/correction and changes are saved.' : ''}
-
-Status message:
-${baseMsg}
-`
-      let aiResponse = ''
-
-      // BN-7: Reuse singleton clients instead of constructing new instances
-      const gemini = getGeminiClient()
-      if (gemini) {
-        try {
-          const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash-8b' })
-          const chatResult = await model.generateContent(chatPrompt)
-          aiResponse = chatResult.response.text().trim()
-        } catch (e) {
-          console.error('Gemini conversational generation failed', e)
-        }
-      }
-
-      if (!aiResponse) {
-        const groq = getGroqClient()
-        if (groq) {
-          try {
-            const completion = await groq.chat.completions.create({
-              messages: [{ role: 'user', content: chatPrompt }],
-              model: 'llama3-8b-8192',
-              temperature: 0.7,
-            })
-            aiResponse = completion.choices[0]?.message?.content?.trim() || ''
-          } catch (e) {
-            console.error('Groq conversational generation failed', e)
-          }
-        }
-      }
-
-      if (aiResponse) {
-        finalMsg = aiResponse
-      }
-    }
-
-    return {
-      success: true,
-      message: finalMsg,
-      matched: matchedAbsent.length > 0 ? matchedAbsent : matchedPresent,
-      unmatched,
-      ambiguous: [],
-      totalPresent,
-      totalAbsent,
-      periodInfo: periodLabel,
-      detectedPeriodNumber: parsed.periodNumber,
-    }
-  } catch (err: any) {
-    return fail(`Unexpected error: ${err.message || 'Unknown error'}`)
-  } finally {
-    // BN-5/6: This finally block runs on all non-background paths (help, auth
-    // failure, period-not-found, etc.). The background path (after()) releases
-    // the lock itself in its own finally block, so we only release here when
-    // the background task was NOT scheduled.
-    // We track whether after() was invoked via _backgroundScheduled flag.
-    if (!_backgroundScheduled) {
-      releaseLock()
-    }
-    _backgroundScheduled = false
+function chatResponseToLegacy(r: ChatResponse): ChatbotResult {
+  return {
+    success: r.messageType === 'success' || r.messageType === 'confirmation',
+    message: r.message,
+    matched: r.confirmationData?.absentNames || [],
+    unmatched: r.clarificationData?.unresolvedNames || [],
+    ambiguous: r.clarificationData?.ambiguousNames?.map(a => ({
+      input: a.input,
+      suggestions: a.suggestions.map(s => s.name),
+    })) || [],
+    totalPresent: r.confirmationData?.totalPresent || 0,
+    totalAbsent: r.confirmationData?.totalAbsent || 0,
+    periodInfo: r.confirmationData?.periodLabel || undefined,
+    isHelp: r.messageType === 'menu',
   }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
-
-interface ParsedMessageFallback {
-  periodNumber: number | null
-  absentNames: string[]
-}
-
-function parseMessageFallback(raw: string, explicitPeriod?: number): ParsedMessageFallback {
-  const trimmed = raw.trim()
-
-  const periodRegex = /^(?:period\s*|p\s*)?(\d)\s*[-–:.]?\s*/i
-  const match = trimmed.match(periodRegex)
-
-  let periodNumber: number | null = explicitPeriod || null
-  let remainder = trimmed
-
-  if (match) {
-    const extractedNum = parseInt(match[1])
-    if (extractedNum >= 1 && extractedNum <= 7) {
-      periodNumber = extractedNum
-      remainder = trimmed.slice(match[0].length).trim()
-    }
-  }
-
-  if (
-    !remainder ||
-    /^all\s+present$/i.test(remainder) ||
-    /^none\s+(absent)?$/i.test(remainder) ||
-    /^no\s+(one|absent|absentees)/i.test(remainder) ||
-    /^all$/i.test(remainder) ||
-    remainder === '0'
-  ) {
-    return { periodNumber, absentNames: [] }
-  }
-
-  remainder = remainder.replace(/^(?:absent(?:ees)?|absent students?)\s*[:\-–]?\s*/i, '').trim()
-
-  const names = remainder
-    .split(/[,\n;]+|\band\b/i)
-    .map((n) => n.trim())
-    .filter((n) => n.length > 0 && !/^(absent|students?|names?|all|none)$/i.test(n))
-
-  return { periodNumber, absentNames: names }
-}
-
-interface MatchResult {
-  type: 'exact' | 'ambiguous' | 'not_found'
-  student?: { id: number; name: string }
-  suggestions?: { id: number; name: string }[]
-}
-
-function matchStudent(
-  inputName: string,
-  students: { id: number; name: string; roll_number: string }[]
-): MatchResult {
-  const input = inputName.toLowerCase().trim()
-
-  const exactMatch = students.find((s) => s.name.toLowerCase() === input)
-  if (exactMatch) {
-    return { type: 'exact', student: exactMatch }
-  }
-
-  const rollMatch = students.find((s) => s.roll_number.toLowerCase() === input)
-  if (rollMatch) {
-    return { type: 'exact', student: rollMatch }
-  }
-
-  const partialMatches = students.filter((s) => {
-    const studentName = s.name.toLowerCase()
-    const nameParts = studentName.split(/\s+/)
-    return (
-      studentName === input ||
-      studentName.includes(input) ||
-      nameParts[0] === input ||
-      nameParts[nameParts.length - 1] === input
-    )
-  })
-
-  if (partialMatches.length === 1) {
-    return { type: 'exact', student: partialMatches[0] }
-  }
-
-  if (partialMatches.length > 1) {
-    return { type: 'ambiguous', suggestions: partialMatches }
-  }
-
-  if (input.length >= 3) {
-    const fuzzyMatches = students.filter((s) =>
-      s.name.toLowerCase().startsWith(input.substring(0, 3))
-    )
-    if (fuzzyMatches.length === 1) {
-      return { type: 'exact', student: fuzzyMatches[0] }
-    }
-    if (fuzzyMatches.length > 1) {
-      return { type: 'ambiguous', suggestions: fuzzyMatches }
-    }
-  }
-
-  return { type: 'not_found' }
+export async function getFormatGuide(currentPeriodNum?: number | null): Promise<string> {
+  return (
+    `**AttendEase Assistant Guide**\n\n` +
+    `I can help you with:\n\n` +
+    `1. **Mark today's attendance** — Quick mark for the current or selected period\n` +
+    `2. **Update previous attendance** — Edit attendance for a past date\n` +
+    `3. **Ask a question** — Query attendance statistics and reports\n\n` +
+    (currentPeriodNum
+      ? `*Current active period:* **Period ${currentPeriodNum}**.\n\n`
+      : '') +
+    `Just type your choice or ask me anything!`
+  )
 }
