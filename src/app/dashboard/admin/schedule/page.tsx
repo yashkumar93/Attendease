@@ -9,6 +9,7 @@ import type { Class, Subject, Profile } from '@/lib/types/database'
 
 interface PeriodRow {
   id: number
+  period_number?: number | null
   date: string
   class_id: number
   subject_id: number
@@ -199,7 +200,7 @@ export default function SchedulePage() {
                       <div key={period.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3.5 hover:bg-surface-soft/40 transition-colors">
                         <div className="flex items-center gap-3">
                           <span className="badge badge-pill text-xs font-mono font-medium bg-surface-cream-strong text-ink">
-                            P{index + 1}
+                            P{period.period_number ?? (index + 1)}
                           </span>
                           <span className="text-xs font-mono text-muted">
                             {period.start_time.slice(0, 5)} – {period.end_time.slice(0, 5)}

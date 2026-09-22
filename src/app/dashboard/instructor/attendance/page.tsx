@@ -8,14 +8,15 @@ import type { Class } from '@/lib/types/database'
 
 interface PeriodSummary {
   id: number
+  period_number?: number | null
   date: string
   start_time: string
   end_time: string
   period_type: string
   class_id: number
-  classes: { class_name: string }
-  subjects: { subject_name: string }
-  profiles: { full_name: string }
+  classes: { class_name: string } | null
+  subjects: { subject_name: string } | null
+  profiles: { full_name: string } | null
   attendance: { id: number; status: string }[]
 }
 
@@ -137,8 +138,9 @@ export default function InstructorAttendancePage() {
         />
       ) : (
         <div className="border border-hairline rounded-lg overflow-hidden divide-y divide-hairline bg-canvas">
-          {periods.map((period) => {
+          {periods.map((period, index) => {
             const summary = getSummary(period.attendance || [])
+            const periodNum = period.period_number ?? (index + 1)
             return (
               <a
                 key={period.id}
@@ -148,19 +150,35 @@ export default function InstructorAttendancePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-base font-semibold text-ink">
-                      {period.classes?.class_name}
+                      Period {periodNum}
                     </span>
-                    <span className="text-muted-soft">·</span>
-                    <span className="text-sm font-medium text-body-strong">
-                      {period.subjects?.subject_name}
-                    </span>
+                    {period.subjects?.subject_name && (
+                      <>
+                        <span className="text-muted-soft">·</span>
+                        <span className="text-sm font-medium text-body-strong">
+                          {period.subjects.subject_name}
+                        </span>
+                      </>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+                    {period.classes?.class_name && (
+                      <>
+                        <span className="font-medium text-ink/75">
+                          {period.classes.class_name}
+                        </span>
+                        <span>·</span>
+                      </>
+                    )}
                     <span className="font-mono">
                       {period.start_time?.slice(0, 5)} – {period.end_time?.slice(0, 5)}
                     </span>
-                    <span>·</span>
-                    <span>{period.profiles?.full_name}</span>
+                    {period.profiles?.full_name && (
+                      <>
+                        <span>·</span>
+                        <span>{period.profiles.full_name}</span>
+                      </>
+                    )}
                     <span className="badge badge-pill text-[10px]">
                       {period.period_type}
                     </span>

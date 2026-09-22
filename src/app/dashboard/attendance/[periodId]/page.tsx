@@ -16,13 +16,14 @@ import type { Student } from '@/lib/types/database'
 
 interface PeriodDetail {
   id: number
+  period_number?: number | null
   date: string
   start_time: string
   end_time: string
   period_type: string
-  classes: { class_name: string }
-  subjects: { subject_name: string }
-  profiles: { full_name: string }
+  classes: { class_name: string } | null
+  subjects: { subject_name: string } | null
+  profiles: { full_name: string } | null
 }
 
 interface AttendanceRow {
@@ -302,7 +303,9 @@ export default function AttendancePage() {
                 </svg>
               </button>
               <h1 className="text-xl sm:text-2xl font-semibold text-ink tracking-tight">
-                {period?.subjects?.subject_name} — {period?.classes?.class_name}
+                {period?.period_number ? `Period ${period.period_number}` : 'Period'}
+                {period?.subjects?.subject_name ? ` · ${period.subjects.subject_name}` : ''}
+                {period?.classes?.class_name ? ` — ${period.classes.class_name}` : ''}
               </h1>
               {userRole === 'admin' && (
                 <span className="badge badge-pill text-[11px] bg-surface-cream-strong text-ink">
