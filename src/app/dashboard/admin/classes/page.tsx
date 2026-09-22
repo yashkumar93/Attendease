@@ -1,7 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from '@/lib/supabase/server'
-import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
-
 export default async function ClassesPage() {
   const supabase = await createClient()
   const { data: classes } = await supabase
@@ -11,18 +9,15 @@ export default async function ClassesPage() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-hairline">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-hairline">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Classes
-            </span>
-          </div>
-          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
+          <p className="text-xs font-medium text-muted mb-2">
+            Academic structure
+          </p>
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
             Classes
           </h1>
-          <p className="text-sm text-muted mt-1 font-sans">
+          <p className="text-muted text-sm mt-1">
             7 fixed academic classes configured for the institution
           </p>
         </div>
@@ -34,11 +29,11 @@ export default async function ClassesPage() {
           return (
             <div key={cls.id} className="card p-5 card-interactive hover:border-[#d8d0c5]">
               <div className="flex items-center gap-3.5 mb-4">
-                <div className="w-10 h-10 rounded-md bg-canvas border border-hairline flex items-center justify-center text-ink font-serif text-lg font-normal">
+                <div className="w-10 h-10 rounded-md bg-canvas border border-hairline flex items-center justify-center text-ink font-mono text-base font-medium">
                   {cls.id}
                 </div>
                 <div>
-                  <h3 className="font-serif text-lg font-normal text-ink">{cls.class_name}</h3>
+                  <h3 className="text-base font-semibold text-ink">{cls.class_name}</h3>
                   <p className="text-xs text-muted font-mono">
                     {studentCount === 1 ? '1 student' : `${studentCount} students`}
                   </p>

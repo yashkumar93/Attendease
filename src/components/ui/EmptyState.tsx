@@ -21,7 +21,7 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
           />
         </svg>
       )}
-      <h3 className="font-serif text-lg font-normal text-ink mb-1">{title}</h3>
+      <h3 className="text-base font-semibold text-ink mb-1">{title}</h3>
       {description && (
         <p className="text-sm text-muted max-w-sm">{description}</p>
       )}

@@ -6,7 +6,6 @@ import { createSubject, updateSubject, deleteSubject } from '@/app/actions/maste
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/ToastProvider'
-import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
 import type { Subject } from '@/lib/types/database'
 
 export default function SubjectsPage() {
@@ -61,18 +60,15 @@ export default function SubjectsPage() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-hairline">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-hairline">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Course Catalog
-            </span>
-          </div>
-          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
+          <p className="text-xs font-medium text-muted mb-2">
+            Course catalog
+          </p>
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
             Subjects
           </h1>
-          <p className="text-sm text-muted mt-1 font-sans">
+          <p className="text-muted text-sm mt-1">
             Manage academic subjects available for daily curriculum and period assignment
           </p>
         </div>
@@ -101,8 +97,10 @@ export default function SubjectsPage() {
           subjects.map((subject) => (
             <div key={subject.id} className="card p-5 flex items-center justify-between group hover:border-[#d8d0c5] transition-all">
               <div className="flex items-center gap-3.5">
-                <div className="w-9 h-9 rounded-md bg-canvas border border-hairline flex items-center justify-center text-primary">
-                  <AnthropicSpikeMark className="w-4 h-4 text-primary" />
+                <div className="w-9 h-9 rounded-md bg-canvas border border-hairline flex items-center justify-center text-grove">
+                  <svg className="w-4 h-4 text-grove" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                  </svg>
                 </div>
                 <span className="font-medium text-ink">{subject.subject_name}</span>
               </div>

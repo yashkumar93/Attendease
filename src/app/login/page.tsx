@@ -39,32 +39,46 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-canvas">
-      {/* Subtle warm ambient atmosphere */}
-      <div className="absolute inset-0 bg-canvas" />
-      <div className="absolute top-0 end-1/4 w-[520px] h-[520px] rounded-full bg-surface-soft/80 blur-3xl -translate-y-1/2 pointer-events-none" />
-      <div className="absolute bottom-0 start-1/4 w-[500px] h-[500px] rounded-full bg-surface-cream-strong/40 blur-3xl translate-y-1/3 pointer-events-none" />
-
-      {/* Login Card */}
-      <div className="relative z-10 w-full max-w-md mx-4 animate-fade-in-up">
-        <div className="bg-canvas border border-hairline rounded-xl p-8 sm:p-10 shadow-sm">
-          {/* Brand header */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-surface-card border border-hairline mb-4 text-primary">
-              <AnthropicSpikeMark className="w-6 h-6 text-primary" />
+    <div className="min-h-screen flex" style={{fontFamily: "'DM Sans', system-ui, sans-serif"}}>
+      {/* Left accent column — forest green, like a ledger margin rule */}
+      <div className="hidden lg:flex w-72 xl:w-80 flex-col justify-between bg-surface-dark border-e border-white/8 p-8 flex-shrink-0">
+        <div>
+          <div className="flex items-center gap-2.5 mb-16">
+            <div className="w-7 h-7 rounded bg-grove/90 border border-grove-mid/40 flex items-center justify-center flex-shrink-0">
+              <AnthropicSpikeMark className="w-3.5 h-3.5 text-white" />
             </div>
-            <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
-              AttendEase
-            </h1>
-            <p className="text-sm text-muted mt-1.5 font-sans">
-              Academic Attendance Management
-            </p>
+            <span className="text-on-dark text-[15px] font-semibold tracking-tight">AttendEase</span>
           </div>
+          <p className="text-on-dark text-2xl font-semibold leading-snug tracking-tight max-w-[220px]">
+            Academic attendance, simply managed.
+          </p>
+          <p className="text-on-dark-soft text-sm mt-4 leading-relaxed">
+            Roster verification, period scheduling, and attendance export — in one institutional register.
+          </p>
+        </div>
+        <p className="text-on-dark-muted text-xs">
+          Authorised personnel only
+        </p>
+      </div>
+
+      {/* Right sign-in panel */}
+      <div className="flex-1 flex items-center justify-center p-6 bg-canvas">
+        <div className="w-full max-w-sm animate-fade-in-up">
+          {/* Mobile-only brand mark */}
+          <div className="flex items-center gap-2 mb-8 lg:hidden">
+            <div className="w-6 h-6 rounded bg-grove/90 flex items-center justify-center">
+              <AnthropicSpikeMark className="w-3 h-3 text-white" />
+            </div>
+            <span className="text-ink text-[15px] font-semibold tracking-tight">AttendEase</span>
+          </div>
+
+          <h1 className="text-ink text-[22px] font-semibold tracking-tight mb-1">Sign in</h1>
+          <p className="text-muted text-sm mb-7">Enter your institutional credentials to continue.</p>
 
           {/* Error notification */}
           {error && (
-            <div className="mb-6 p-3 rounded-md bg-danger-light border border-danger/25 text-danger-foreground text-sm animate-fade-in flex items-center gap-2.5">
-              <svg className="w-4 h-4 flex-shrink-0 text-danger" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <div className="mb-5 px-3 py-2.5 rounded bg-danger-light border border-danger/20 text-danger-foreground text-sm animate-fade-in flex items-start gap-2.5">
+              <svg className="w-4 h-4 flex-shrink-0 text-danger mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
               <span>{error}</span>
@@ -126,7 +140,7 @@ export default function LoginPage() {
             </div>
           </form>
 
-          <p className="text-center text-xs text-muted-soft mt-8">
+          <p className="text-center text-xs text-muted-soft mt-7">
             Contact the administrator for institutional login credentials
           </p>
         </div>

@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/ToastProvider'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
 import type { Class, ExportLog } from '@/lib/types/database'
 
 export default function ExportPage() {
@@ -149,18 +148,15 @@ export default function ExportPage() {
   return (
     <div className="animate-fade-in space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-hairline">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-hairline">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Data Synchronization
-            </span>
-          </div>
-          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
-            Export Attendance
+          <p className="text-xs font-medium text-muted mb-2">
+            Data synchronization
+          </p>
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+            Export attendance
           </h1>
-          <p className="text-sm text-muted mt-1 font-sans">
+          <p className="text-muted text-sm mt-1">
             Download attendance archives as CSV or publish live to synchronized Google Sheets
           </p>
         </div>
@@ -168,7 +164,7 @@ export default function ExportPage() {
 
       {/* Export form */}
       <div className="card p-6 sm:p-8">
-        <h2 className="font-serif text-xl font-normal text-ink mb-4">Export Scope</h2>
+        <h2 className="text-lg font-semibold text-ink mb-4">Export scope</h2>
 
         <div className="space-y-6">
           {/* Scope type toggle */}
@@ -306,9 +302,11 @@ export default function ExportPage() {
 
           {/* Info callout */}
           <div className="rounded-lg border border-hairline bg-surface-soft p-4 text-xs text-muted leading-relaxed flex items-start gap-2.5">
-            <AnthropicSpikeMark className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            <svg className="w-4 h-4 text-grove mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
             <div>
-              <strong className="text-ink">Google Sheets Export</strong> publishes an organized spreadsheet with styled columns, student rosters, and color-coded status highlights shared with the authenticated Google service account.
+              <strong className="text-ink">Google Sheets export</strong> publishes an organized spreadsheet with styled columns, student rosters, and color-coded status highlights shared with the authenticated Google service account.
             </div>
           </div>
         </div>
@@ -317,7 +315,7 @@ export default function ExportPage() {
       {/* Export history */}
       <div className="card overflow-hidden">
         <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between bg-surface-soft">
-          <h2 className="font-serif text-lg font-normal text-ink">Export history</h2>
+          <h2 className="text-base font-semibold text-ink">Export history</h2>
           <span className="text-xs text-muted font-mono">{exportLogs.length} recent exports</span>
         </div>
         {logsLoading ? (

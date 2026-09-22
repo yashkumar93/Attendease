@@ -292,7 +292,7 @@ export default function AttendancePage() {
   return (
     <div className="animate-fade-in">
       {/* Period header */}
-      <div className="card p-6 mb-6">
+      <div className="card p-5 sm:p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
@@ -301,39 +301,39 @@ export default function AttendancePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                 </svg>
               </button>
-              <h1 className="font-serif text-2xl sm:text-3xl font-normal text-ink tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-semibold text-ink tracking-tight">
                 {period?.subjects?.subject_name} — {period?.classes?.class_name}
               </h1>
               {userRole === 'admin' && (
                 <span className="badge badge-pill text-[11px] bg-surface-cream-strong text-ink">
-                  Admin Mode
+                  Admin
                 </span>
               )}
               {userRole === 'instructor' && (
-                <span className="badge badge-pill text-[11px] bg-accent-teal/15 text-accent-teal border border-accent-teal/30">
-                  Instructor Mode
+                <span className="badge badge-pill text-[11px] bg-grove-pale text-grove border border-grove/20">
+                  Instructor
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs text-muted ms-8 sm:ms-10 font-sans">
-              <span>{period?.date}</span>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted ms-8 sm:ms-10">
+              <span className="font-mono">{period?.date}</span>
               <span className="font-mono">{period?.start_time?.slice(0, 5)} – {period?.end_time?.slice(0, 5)}</span>
               <span>{period?.profiles?.full_name}</span>
               <span className="badge badge-pill text-[10px]">{period?.period_type}</span>
             </div>
           </div>
-          <div className="flex items-center justify-around sm:justify-end gap-6 w-full sm:w-auto mt-2 sm:mt-0">
+          <div className="flex items-center justify-around sm:justify-end gap-6 w-full sm:w-auto mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-hairline">
             <div className="text-center min-w-[50px]">
-              <p className="font-serif text-3xl font-normal text-success-foreground">{presentCount}</p>
-              <p className="text-[10px] text-muted uppercase tracking-wider">Present</p>
+              <p className="font-mono text-3xl font-medium text-success-foreground">{presentCount}</p>
+              <p className="text-[10px] text-muted">Present</p>
             </div>
             <div className="text-center min-w-[50px]">
-              <p className="font-serif text-3xl font-normal text-danger-foreground">{absentCount}</p>
-              <p className="text-[10px] text-muted uppercase tracking-wider">Absent</p>
+              <p className="font-mono text-3xl font-medium text-danger-foreground">{absentCount}</p>
+              <p className="text-[10px] text-muted">Absent</p>
             </div>
             <div className="text-center min-w-[50px]">
-              <p className="font-serif text-3xl font-normal text-ink">{students.length}</p>
-              <p className="text-[10px] text-muted uppercase tracking-wider">Total</p>
+              <p className="font-mono text-3xl font-medium text-ink">{students.length}</p>
+              <p className="text-[10px] text-muted">Total</p>
             </div>
           </div>
         </div>

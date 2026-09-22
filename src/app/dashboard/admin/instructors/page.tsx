@@ -6,7 +6,6 @@ import { createInstructor, updateInstructor, toggleInstructorStatus } from '@/ap
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/ToastProvider'
-import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
 import type { Profile } from '@/lib/types/database'
 
 export default function InstructorsPage() {
@@ -77,18 +76,15 @@ export default function InstructorsPage() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-hairline">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-hairline">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Faculty Directory
-            </span>
-          </div>
-          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
+          <p className="text-xs font-medium text-muted mb-2">
+            Faculty directory
+          </p>
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
             Instructors
           </h1>
-          <p className="text-sm text-muted mt-1 font-sans">
+          <p className="text-muted text-sm mt-1">
             Manage teaching faculty accounts, credentials, and teaching status
           </p>
         </div>

@@ -6,6 +6,8 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/lib/types/database'
 import { AnthropicSpikeMark } from './AnthropicSpikeMark'
+import { ProfileModal } from './ProfileModal'
+import { getStaffByEmail } from '@/lib/constants/staff'
 
 interface NavItem {
   label: string
@@ -111,12 +113,17 @@ export function Sidebar() {
   const router = useRouter()
   const supabase = createClient()
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userMetadata, setUserMetadata] = useState<Record<string, any> | null>(null)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     async function loadProfile() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        setUserEmail(user.email || null)
+        setUserMetadata(user.user_metadata || null)
         const { data } = await supabase
           .from('profiles')
           .select('*')
@@ -127,6 +134,11 @@ export function Sidebar() {
     }
     loadProfile()
   }, [supabase])
+
+  const staff = getStaffByEmail(userEmail)
+  const displayName = staff?.name || userMetadata?.name || userMetadata?.full_name || profile?.full_name || 'Loading...'
+  const displayPost = staff?.post || userMetadata?.post || (profile?.role === 'admin' ? 'Administrator' : 'Faculty Instructor')
+  const displayInitials = staff?.initials || displayName.slice(0, 2).toUpperCase()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -148,19 +160,19 @@ export function Sidebar() {
 
   const sidebarContent = (
     <>
-      {/* Brand Header with Anthropic Spike Mark */}
+      {/* Brand header */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-white/8">
-        <div className="w-8 h-8 rounded-lg bg-surface-dark-elevated border border-white/10 flex items-center justify-center text-primary shadow-sm">
-          <AnthropicSpikeMark className="w-4 h-4" />
+        <div className="w-7 h-7 rounded bg-grove/90 border border-grove-mid/50 flex items-center justify-center flex-shrink-0">
+          <AnthropicSpikeMark className="w-3.5 h-3.5 text-white" />
         </div>
-        <div>
-          <h1 className="text-on-dark font-serif text-lg tracking-tight font-normal">AttendEase</h1>
-          <p className="text-on-dark-soft text-[11px] font-sans tracking-normal">Academic Attendance</p>
+        <div className="min-w-0">
+          <p className="text-on-dark text-[15px] font-semibold tracking-tight leading-tight">AttendEase</p>
+          <p className="text-on-dark-soft text-[11px] font-medium tracking-wide">Attendance Register</p>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
         {filteredNavItems.map((item) => {
           if (item.href === '#quick-mark') {
             return (
@@ -170,55 +182,69 @@ export function Sidebar() {
                   setMobileOpen(false)
                   window.dispatchEvent(new CustomEvent('open-quick-mark'))
                 }}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 w-full text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark"
+                className="flex items-center gap-3 px-3 py-2 rounded text-sm font-medium transition-colors duration-120 w-full text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark"
               >
                 {item.icon}
                 {item.label}
                 <div className="ms-auto">
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">⚡ Quick</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-grove/25 text-grove-mid font-semibold">Quick</span>
                 </div>
               </button>
             )
           }
+          const active = isActive(item.href)
           return (
             <Link
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
-                isActive(item.href)
-                  ? 'bg-surface-dark-elevated text-on-dark shadow-sm'
-                  : 'text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark'
+              className={`relative flex items-center gap-3 px-3 py-2 rounded text-sm font-medium transition-colors duration-120 active:opacity-75 ${
+                active
+                  ? 'bg-surface-dark-elevated text-on-dark'
+                  : 'text-on-dark-soft hover:bg-surface-dark-elevated/60 hover:text-on-dark'
               }`}
             >
+              {/* Grove active indicator — a left-edge rule, not a dot */}
+              {active && (
+                <span className="absolute inset-y-0.5 start-0 w-0.5 rounded-e bg-grove-mid" />
+              )}
               {item.icon}
               {item.label}
-              {isActive(item.href) && (
-                <div className="ms-auto w-1.5 h-1.5 rounded-full bg-primary animate-scale-in" />
-              )}
             </Link>
           )
         })}
       </nav>
 
-      {/* User profile */}
+      {/* User profile footer */}
       <div className="px-3 py-4 border-t border-white/8">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-dark-soft/60 border border-white/5">
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary text-xs font-semibold">
-            {profile?.full_name?.[0]?.toUpperCase() || '?'}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-on-dark font-medium truncate">
-              {profile?.full_name || 'Loading...'}
-            </p>
-            <p className="text-xs text-on-dark-soft capitalize">
-              {profile?.role || '...'}
-            </p>
-          </div>
+        <div className="flex items-center gap-1.5 px-2 py-2 rounded-md hover:bg-surface-dark-elevated transition-colors group">
+          <button
+            type="button"
+            onClick={() => {
+              setMobileOpen(false)
+              setProfileModalOpen(true)
+            }}
+            className="flex items-center gap-2.5 flex-1 min-w-0 text-start cursor-pointer select-none focus:outline-none"
+            title="View staff profile"
+            aria-label="View staff profile"
+          >
+            <div className="w-7 h-7 rounded bg-surface-dark-elevated border border-white/10 group-hover:border-grove/50 flex items-center justify-center text-on-dark text-xs font-semibold flex-shrink-0 transition-colors">
+              {displayInitials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] text-on-dark font-medium truncate leading-tight group-hover:text-white transition-colors">
+                {displayName}
+              </p>
+              <p className="text-[11px] text-on-dark-soft truncate leading-tight mt-0.5" title={displayPost}>
+                {displayPost}
+              </p>
+            </div>
+          </button>
           <button
             onClick={handleLogout}
-            className="p-1.5 rounded-md text-on-dark-soft hover:text-on-dark hover:bg-surface-dark-elevated transition-colors"
+            className="p-1.5 rounded text-on-dark-muted hover:text-on-dark-soft hover:bg-white/10 transition-colors flex-shrink-0"
             title="Sign out"
+            aria-label="Sign out"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
@@ -231,28 +257,30 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile Top App Bar with brand chrome & navigation drawer toggle */}
+      {/* Mobile top bar */}
       <div className="lg:hidden fixed top-0 inset-x-0 z-30 h-14 bg-surface-dark border-b border-white/8 flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-1.5 rounded-md text-on-dark hover:bg-surface-dark-elevated transition-colors"
+            className="p-1.5 rounded text-on-dark-soft hover:text-on-dark hover:bg-surface-dark-elevated transition-colors"
             aria-label="Open navigation"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
           </button>
           <div className="flex items-center gap-2">
-            <AnthropicSpikeMark className="w-4 h-4 text-primary" />
-            <span className="font-serif text-base text-on-dark tracking-tight">AttendEase</span>
+            <div className="w-5 h-5 rounded bg-grove/90 flex items-center justify-center">
+              <AnthropicSpikeMark className="w-2.5 h-2.5 text-white" />
+            </div>
+            <span className="text-[15px] font-semibold text-on-dark tracking-tight">AttendEase</span>
           </div>
         </div>
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-quick-mark'))}
-          className="text-xs px-2.5 py-1 rounded-full bg-primary/20 text-primary font-semibold border border-primary/30 active:scale-95 transition-transform"
+          className="text-xs px-2.5 py-1 rounded bg-surface-dark-elevated text-on-dark-soft font-medium border border-white/8 active:scale-95 transition-transform"
         >
-          ⚡ Quick Mark
+          Quick mark
         </button>
       </div>
 
@@ -272,6 +300,16 @@ export function Sidebar() {
       >
         {sidebarContent}
       </aside>
+
+      {/* Profile Details Modal */}
+      <ProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        profile={profile}
+        email={userEmail}
+        post={userMetadata?.post}
+        onLogout={handleLogout}
+      />
     </>
   )
 }

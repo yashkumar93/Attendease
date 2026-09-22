@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import { createPeriod, deletePeriod } from '@/app/actions/schedule'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/ToastProvider'
-import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
 import type { Class, Subject, Profile } from '@/lib/types/database'
 
 interface PeriodRow {
@@ -88,18 +87,15 @@ export default function SchedulePage() {
   return (
     <div className="animate-fade-in space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-hairline">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-hairline">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Academic Timetable
-            </span>
-          </div>
-          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
-            Daily Schedule
+          <p className="text-xs font-medium text-muted mb-2">
+            Academic timetable
+          </p>
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+            Daily schedule
           </h1>
-          <p className="text-sm text-muted mt-1 font-sans">
+          <p className="text-muted text-sm mt-1">
             Configure periods, timings, and faculty assignments for each day
           </p>
         </div>
@@ -167,7 +163,7 @@ export default function SchedulePage() {
               <div key={cls.id} className="card overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-3.5 bg-surface-soft border-b border-hairline">
                   <div className="flex items-center gap-3">
-                    <h3 className="font-serif text-lg font-normal text-ink">{cls.class_name}</h3>
+                    <h3 className="text-base font-semibold text-ink">{cls.class_name}</h3>
                     <span className="badge badge-pill text-[11px] bg-surface-card border-hairline">
                       Cohort (50 Students)
                     </span>

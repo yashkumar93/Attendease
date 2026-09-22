@@ -28,7 +28,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
-          <h2 className="font-serif text-xl font-normal text-ink tracking-tight">{title}</h2>
+          <h2 className="text-lg font-semibold text-ink tracking-tight">{title}</h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-md text-muted hover:text-ink hover:bg-surface-card transition-colors"
@@ -93,7 +93,7 @@ export function ConfirmModal({
               )}
             </div>
             <div>
-              <h3 className="font-serif text-lg font-normal text-ink">{title}</h3>
+              <h3 className="text-base font-semibold text-ink">{title}</h3>
               <p className="text-sm text-muted mt-1">{message}</p>
             </div>
           </div>

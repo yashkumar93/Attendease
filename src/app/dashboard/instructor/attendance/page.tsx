@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { EmptyState } from '@/components/ui/EmptyState'
 import type { Class } from '@/lib/types/database'
-import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
 
 interface PeriodSummary {
   id: number
@@ -63,18 +62,15 @@ export default function InstructorAttendancePage() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-hairline">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-hairline">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <AnthropicSpikeMark className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">
-              Verification &amp; Records
-            </span>
-          </div>
-          <h1 className="font-serif text-3xl font-normal text-ink tracking-tight">
-            Attendance Overview
+          <p className="text-xs font-medium text-muted mb-2">
+            Verification & records
+          </p>
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+            Attendance overview
           </h1>
-          <p className="text-sm text-muted mt-1 font-sans">
+          <p className="text-muted text-sm mt-1">
             View and manage class attendance across all academic periods
           </p>
         </div>
@@ -84,27 +80,27 @@ export default function InstructorAttendancePage() {
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <label className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
+            <label className="text-xs font-medium text-muted whitespace-nowrap">
               Date:
             </label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="input w-full sm:w-44"
+              className="input w-full sm:w-44 font-mono text-sm"
             />
           </div>
           {classes.length > 1 && (
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <label className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
+              <label className="text-xs font-medium text-muted whitespace-nowrap">
                 Class:
               </label>
               <select
                 value={selectedClass}
                 onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : '')}
-                className="input w-full sm:w-48"
+                className="input w-full sm:w-48 text-sm"
               >
-                <option value="">All Classes</option>
+                <option value="">All classes</option>
                 {classes.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.class_name}
@@ -120,7 +116,7 @@ export default function InstructorAttendancePage() {
       {loading ? (
         <div className="space-y-3">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="card p-6 h-24 animate-pulse bg-surface-soft/60" />
+            <div key={i} className="card p-6 h-20 animate-pulse bg-surface-soft/60" />
           ))}
         </div>
       ) : periods.length === 0 ? (
@@ -140,18 +136,18 @@ export default function InstructorAttendancePage() {
           }
         />
       ) : (
-        <div className="space-y-3 stagger-children">
+        <div className="border border-hairline rounded-lg overflow-hidden divide-y divide-hairline bg-canvas">
           {periods.map((period) => {
             const summary = getSummary(period.attendance || [])
             return (
               <a
                 key={period.id}
                 href={`/dashboard/attendance/${period.id}`}
-                className="card p-5 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-[#d8d0c5] transition-all group block"
+                className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4 hover:bg-surface-soft transition-colors group block"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="font-serif text-lg font-normal text-ink">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-base font-semibold text-ink">
                       {period.classes?.class_name}
                     </span>
                     <span className="text-muted-soft">·</span>
@@ -174,25 +170,25 @@ export default function InstructorAttendancePage() {
                   {summary.marked ? (
                     <div className="flex items-center gap-4">
                       <div className="text-center min-w-[48px]">
-                        <p className="font-serif text-xl font-normal text-success-foreground">
+                        <p className="font-mono text-xl font-medium text-success-foreground">
                           {summary.present}
                         </p>
-                        <p className="text-[10px] text-muted uppercase tracking-wider">Present</p>
+                        <p className="text-[10px] text-muted">Present</p>
                       </div>
                       <div className="text-center min-w-[48px]">
-                        <p className="font-serif text-xl font-normal text-danger-foreground">
+                        <p className="font-mono text-xl font-medium text-danger-foreground">
                           {summary.absent}
                         </p>
-                        <p className="text-[10px] text-muted uppercase tracking-wider">Absent</p>
+                        <p className="text-[10px] text-muted">Absent</p>
                       </div>
                     </div>
                   ) : (
-                    <span className="badge bg-warning-light text-warning-foreground border border-warning/25">
+                    <span className="badge bg-warning-light text-warning-foreground border border-warning/25 text-xs">
                       Not marked
                     </span>
                   )}
                   <svg
-                    className="w-5 h-5 text-muted-soft group-hover:text-primary transition-colors"
+                    className="w-4 h-4 text-muted-soft group-hover:text-ink transition-colors flex-shrink-0"
                     fill="none"
                     viewBox="0 0 24 24"
                     strokeWidth={1.5}
