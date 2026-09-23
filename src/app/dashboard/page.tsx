@@ -91,7 +91,7 @@ export default async function DashboardPage() {
     {
       label: "Today's Periods",
       value: todayPeriods || 0,
-      badge: 'Schedule',
+      badge: 'Active',
       accent: 'border-s-4 border-s-accent-amber',
       show: true,
     },
@@ -110,8 +110,8 @@ export default async function DashboardPage() {
           </h1>
           <p className="text-muted text-sm mt-1">
             {isAdmin
-              ? "Here is an overview of today's academic timetable and attendance activity."
-              : "Here are your assigned academic periods for today."}
+              ? "Here is an overview of today's academic periods and attendance activity."
+              : "Here is today's academic periods and attendance overview."}
           </p>
         </div>
 
@@ -151,23 +151,6 @@ export default async function DashboardPage() {
           </div>
 
           <div className="border border-hairline rounded-lg overflow-hidden divide-y divide-hairline">
-            <a
-              href="/dashboard/admin/schedule"
-              className="flex items-center gap-4 px-5 py-4 bg-canvas hover:bg-surface-soft transition-colors group"
-            >
-              <div className="w-8 h-8 rounded bg-surface-card border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-ink">Set up schedule</p>
-                <p className="text-xs text-muted mt-0.5">Generate or customize daily periods and instructor assignments.</p>
-              </div>
-              <svg className="w-4 h-4 text-muted-soft flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
-            </a>
 
             <a
               href="/dashboard/admin/attendance"
@@ -188,7 +171,7 @@ export default async function DashboardPage() {
             </a>
 
             <a
-              href="/dashboard/admin/export"
+              href="/dashboard/export"
               className="flex items-center gap-4 px-5 py-4 bg-canvas hover:bg-surface-soft transition-colors group"
             >
               <div className="w-8 h-8 rounded bg-surface-card border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
@@ -214,7 +197,7 @@ export default async function DashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-ink">Quick actions</h2>
           </div>
-          <div className="border border-hairline rounded-lg overflow-hidden">
+          <div className="border border-hairline rounded-lg overflow-hidden divide-y divide-hairline">
             <a
               href="/dashboard/instructor/attendance"
               className="flex items-center gap-4 px-5 py-4 bg-canvas hover:bg-surface-soft transition-colors group"
@@ -227,6 +210,24 @@ export default async function DashboardPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-ink">Attendance overview</p>
                 <p className="text-xs text-muted mt-0.5">View, take, and manage attendance for all classes and academic periods.</p>
+              </div>
+              <svg className="w-4 h-4 text-muted-soft flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </a>
+
+            <a
+              href="/dashboard/export"
+              className="flex items-center gap-4 px-5 py-4 bg-canvas hover:bg-surface-soft transition-colors group"
+            >
+              <div className="w-8 h-8 rounded bg-surface-card border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-ink">Export attendance</p>
+                <p className="text-xs text-muted mt-0.5">Download attendance records as CSV or export live to Google Sheets.</p>
               </div>
               <svg className="w-4 h-4 text-muted-soft flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />

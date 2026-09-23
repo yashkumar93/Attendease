@@ -77,6 +77,13 @@ export async function proxy(request: NextRequest) {
     return redirectWithCookies(url)
   }
 
+  // Redirect legacy /dashboard/admin/export to shared /dashboard/export
+  if (pathname === '/dashboard/admin/export') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/dashboard/export'
+    return redirectWithCookies(url)
+  }
+
   // Fetch user profile for role-based routing
   if (pathname.startsWith('/dashboard/admin')) {
     const { data: profile } = await supabase

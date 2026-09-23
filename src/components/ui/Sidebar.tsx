@@ -28,16 +28,6 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    label: 'Schedule',
-    href: '/dashboard/admin/schedule',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-      </svg>
-    ),
-    adminOnly: true,
-  },
-  {
     label: 'Attendance',
     href: '/dashboard/admin/attendance',
     icon: (
@@ -88,24 +78,13 @@ const navItems: NavItem[] = [
     adminOnly: true,
   },
   {
-    label: 'Subjects',
-    href: '/dashboard/admin/subjects',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-      </svg>
-    ),
-    adminOnly: true,
-  },
-  {
     label: 'Export',
-    href: '/dashboard/admin/export',
+    href: '/dashboard/export',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
       </svg>
     ),
-    adminOnly: true,
   },
   {
     label: 'Quick Mark',
@@ -118,13 +97,19 @@ const navItems: NavItem[] = [
   },
 ]
 
+interface UserMeta {
+  name?: string
+  full_name?: string
+  post?: string
+}
+
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
-  const [userMetadata, setUserMetadata] = useState<Record<string, any> | null>(null)
+  const [userMetadata, setUserMetadata] = useState<UserMeta | null>(null)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 

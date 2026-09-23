@@ -5,6 +5,7 @@ import { after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentPeriod, getNextPeriod, getPeriodStatusSummary, PERIOD_TIMINGS, ACTIVE_DAYS } from '@/lib/period-config'
+import { ensureDailyPeriods } from '@/app/actions/auto-schedule'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import Groq from 'groq-sdk'
 import { matchStudent, parseNameInput, isAllPresent, batchMatchNames, type StudentRecord } from '@/lib/fuzzy-match'
@@ -54,6 +55,10 @@ function getGroqClient(): Groq | null {
   if (!_groqClient) _groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY })
   return _groqClient
 }
+
+// ── Model Configurations ─────────────────────────────────────────
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite'
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b'
 
 // ── Concurrency Lock ────────────────────────────────────────────
 let isProcessingRequest = false
@@ -254,83 +259,49 @@ async function handleMenu(text: string, s: ChatSession): Promise<ChatResponse> {
 async function startAttendanceFlow(s: ChatSession): Promise<ChatResponse> {
   const adminClient = createAdminClient()
 
-  // Check if instructor teaches multiple classes
-  if (s.role === 'instructor') {
-    const { data: instructorPeriods } = await adminClient
-      .from('periods')
-      .select('class_id, classes(class_name)')
-      .eq('date', s.targetDate!)
-      .eq('instructor_id', s.userId)
-
-    if (!instructorPeriods || instructorPeriods.length === 0) {
-      return makeResponse(
-        `You don't have any classes scheduled for ${formatDateDisplay(s.targetDate!)}.`,
-        { ...s, step: 'menu' },
-        'error',
-        { menuOptions: getMenuOptions(s.role) }
-      )
-    }
-
-    const uniqueClasses = new Map<number, string>()
-    for (const p of instructorPeriods as any[]) {
-      if (!uniqueClasses.has(p.class_id)) {
-        uniqueClasses.set(p.class_id, p.classes?.class_name || `Class ${p.class_id}`)
-      }
-    }
-
-    if (uniqueClasses.size > 1) {
-      s.step = 'select_class'
-      const classList: ClassOption[] = Array.from(uniqueClasses.entries()).map(([id, name]) => ({ id, className: name }))
-      return makeResponse(
-        'You teach multiple classes. Which class would you like to mark attendance for?',
-        s,
-        'class_select',
-        { classList }
-      )
-    }
-
-    // Single class — auto-select
-    const [classId, className] = [...uniqueClasses.entries()][0]
-    s.classSectionId = classId
-    s.className = className
-  } else {
-    // Admin: if multiple classes, ask; for now fetch what exists today
-    const { data: todayPeriods } = await adminClient
-      .from('periods')
-      .select('class_id, classes(class_name)')
-      .eq('date', s.targetDate!)
-
-    if (!todayPeriods || todayPeriods.length === 0) {
-      return makeResponse(
-        `No schedule found for ${formatDateDisplay(s.targetDate!)}. Please ensure the daily schedule has been generated.`,
-        { ...s, step: 'menu' },
-        'error',
-        { menuOptions: getMenuOptions(s.role) }
-      )
-    }
-
-    const uniqueClasses = new Map<number, string>()
-    for (const p of todayPeriods as any[]) {
-      if (!uniqueClasses.has(p.class_id)) {
-        uniqueClasses.set(p.class_id, p.classes?.class_name || `Class ${p.class_id}`)
-      }
-    }
-
-    if (uniqueClasses.size > 1) {
-      s.step = 'select_class'
-      const classList: ClassOption[] = Array.from(uniqueClasses.entries()).map(([id, name]) => ({ id, className: name }))
-      return makeResponse(
-        'Multiple classes found. Which class would you like to mark attendance for?',
-        s,
-        'class_select',
-        { classList }
-      )
-    }
-
-    const [classId, className] = [...uniqueClasses.entries()][0]
-    s.classSectionId = classId
-    s.className = className
+  // Ensure daily periods exist for this date
+  try {
+    await ensureDailyPeriods(s.targetDate!)
+  } catch (err) {
+    console.error('Failed to ensure daily periods:', err)
   }
+
+  // Fetch classes that have periods today for selection (any instructor can mark any class/period)
+  const { data: todayPeriods } = await adminClient
+    .from('periods')
+    .select('class_id, classes(class_name)')
+    .eq('date', s.targetDate!)
+
+  if (!todayPeriods || todayPeriods.length === 0) {
+    return makeResponse(
+      `No periods found for ${formatDateDisplay(s.targetDate!)}. This may be a non-teaching day (e.g. Sunday).`,
+      { ...s, step: 'menu' },
+      'error',
+      { menuOptions: getMenuOptions(s.role) }
+    )
+  }
+
+  const uniqueClasses = new Map<number, string>()
+  for (const p of todayPeriods as any[]) {
+    if (!uniqueClasses.has(p.class_id)) {
+      uniqueClasses.set(p.class_id, p.classes?.class_name || `Class ${p.class_id}`)
+    }
+  }
+
+  if (uniqueClasses.size > 1) {
+    s.step = 'select_class'
+    const classList: ClassOption[] = Array.from(uniqueClasses.entries()).map(([id, name]) => ({ id, className: name }))
+    return makeResponse(
+      'Which class would you like to mark attendance for?',
+      s,
+      'class_select',
+      { classList }
+    )
+  }
+
+  const [classId, className] = [...uniqueClasses.entries()][0]
+  s.classSectionId = classId
+  s.className = className
 
   // Continue to period detection/selection
   if (s.currentIntent === 'mark_today') {
@@ -399,7 +370,7 @@ async function detectCurrentPeriod(s: ChatSession): Promise<ChatResponse> {
   const next = getNextPeriod()
 
   // Fetch today's periods for this class
-  const { data: periods } = await adminClient
+  let { data: periods } = await adminClient
     .from('periods')
     .select('id, period_number, start_time, end_time, classes(class_name), subjects(subject_name), attendance(id, status)')
     .eq('date', s.targetDate!)
@@ -407,8 +378,21 @@ async function detectCurrentPeriod(s: ChatSession): Promise<ChatResponse> {
     .order('period_number')
 
   if (!periods || periods.length === 0) {
+    try {
+      await ensureDailyPeriods(s.targetDate!)
+      const refetch = await adminClient
+        .from('periods')
+        .select('id, period_number, start_time, end_time, classes(class_name), subjects(subject_name), attendance(id, status)')
+        .eq('date', s.targetDate!)
+        .eq('class_id', s.classSectionId!)
+        .order('period_number')
+      periods = refetch.data
+    } catch {}
+  }
+
+  if (!periods || periods.length === 0) {
     return makeResponse(
-      `No periods found for ${s.className} on ${formatDateDisplay(s.targetDate!)}. Please ensure the schedule has been generated.`,
+      `No periods found for ${s.className} on ${formatDateDisplay(s.targetDate!)}. This may be a non-teaching day (e.g. Sunday).`,
       { ...s, step: 'menu' },
       'error',
       { menuOptions: getMenuOptions(s.role) }
@@ -521,11 +505,20 @@ async function showPeriodsForDate(s: ChatSession): Promise<ChatResponse> {
     query = query.eq('class_id', s.classSectionId)
   }
 
-  const { data: periods, error } = await query
+  let { data: periods, error } = await query
+
+  if (!periods || periods.length === 0) {
+    try {
+      await ensureDailyPeriods(s.targetDate!)
+      const refetch = await query
+      periods = refetch.data
+      error = refetch.error
+    } catch {}
+  }
 
   if (error || !periods || periods.length === 0) {
     return makeResponse(
-      `No periods found for ${s.className || 'this class'} on **${formatDateDisplay(s.targetDate!)}**. This might be a non-teaching day or the schedule hasn't been generated.`,
+      `No periods found for ${s.className || 'this class'} on **${formatDateDisplay(s.targetDate!)}**. This may be a non-teaching day (e.g. Sunday).`,
       { ...s, step: 'ask_date' },
       'ask_input'
     )
@@ -1248,7 +1241,7 @@ Date range hints:
   const gemini = getGeminiClient()
   if (gemini) {
     try {
-      const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash-8b' })
+      const model = gemini.getGenerativeModel({ model: GEMINI_MODEL })
       const result = await model.generateContent(prompt)
       const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim()
       return JSON.parse(text) as QueryAnalysis
@@ -1262,7 +1255,7 @@ Date range hints:
     try {
       const completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama3-8b-8192',
+        model: GROQ_MODEL,
         temperature: 0,
         response_format: { type: 'json_object' },
       })
@@ -1370,15 +1363,18 @@ async function executeAnalyticsQuery(
         .eq('date', date)
         .order('period_number')
 
-      // Scope to instructor's classes if not admin
-      if (s.role === 'instructor') {
-        query = query.eq('instructor_id', s.userId)
-      }
-
-      const { data: periods } = await query
+      let { data: periods } = await query
 
       if (!periods || periods.length === 0) {
-        return { message: `No schedule found for ${formatDateDisplay(date)}.`, hasData: false }
+        try {
+          await ensureDailyPeriods(date)
+          const refetch = await query
+          periods = refetch.data
+        } catch {}
+      }
+
+      if (!periods || periods.length === 0) {
+        return { message: `No periods found for ${formatDateDisplay(date)}.`, hasData: false }
       }
 
       let msg = `**Attendance Summary for ${formatDateDisplay(date)}:**\n\n`
@@ -1398,7 +1394,6 @@ async function executeAnalyticsQuery(
           Period: `P${p.period_number}`,
           Time: `${p.start_time?.slice(0, 5)}–${p.end_time?.slice(0, 5)}`,
           Class: p.classes?.class_name || '',
-          Subject: p.subjects?.subject_name || '',
           Status: marked ? `${present}P / ${absent}A` : 'Not marked',
         })
       }
@@ -1409,7 +1404,7 @@ async function executeAnalyticsQuery(
         analyticsData: {
           summary: `${periods.length} periods`,
           rows,
-          columns: ['Period', 'Time', 'Class', 'Subject', 'Status'],
+          columns: ['Period', 'Time', 'Class', 'Status'],
         },
       }
     }
@@ -1537,7 +1532,7 @@ Info: ${baseInfo}
   const gemini = getGeminiClient()
   if (gemini) {
     try {
-      const model = gemini.getGenerativeModel({ model: 'gemini-1.5-flash-8b' })
+      const model = gemini.getGenerativeModel({ model: GEMINI_MODEL })
       const result = await model.generateContent(prompt)
       const text = result.response.text().trim()
       if (text) return text
@@ -1551,7 +1546,7 @@ Info: ${baseInfo}
     try {
       const completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
-        model: 'llama3-8b-8192',
+        model: GROQ_MODEL,
         temperature: 0.7,
       })
       return completion.choices[0]?.message?.content?.trim() || ''

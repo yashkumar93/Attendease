@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { ensureDailyPeriods } from '@/app/actions/auto-schedule'
 import type { Class } from '@/lib/types/database'
 
 interface PeriodSummary {
@@ -45,7 +47,17 @@ export default function AdminAttendancePage() {
 
     if (selectedClass) query = query.eq('class_id', selectedClass)
 
-    const { data } = await query
+    let { data } = await query
+    if ((!data || data.length === 0) && date) {
+      try {
+        await ensureDailyPeriods(date)
+        const refetch = await query
+        data = refetch.data
+      } catch (e) {
+        console.error('Failed to auto-generate periods:', e)
+      }
+    }
+
     if (data) setPeriods(data as any)
     setLoading(false)
   }
@@ -93,6 +105,17 @@ export default function AdminAttendancePage() {
           <p className="text-muted text-sm mt-1">
             View and manage class attendance across academic periods
           </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard/export"
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Export records
+          </Link>
         </div>
       </div>
 
@@ -142,11 +165,29 @@ export default function AdminAttendancePage() {
       ) : periods.length === 0 ? (
         <EmptyState
           title="No periods found"
-          description={`No periods scheduled for ${date}${selectedClass ? '' : ' across any class'}.`}
+          description={`No periods found for ${date}${selectedClass ? '' : ' across any class'}.`}
           action={
-            <a href="/dashboard/admin/schedule" className="btn btn-primary">
-              Set up schedule
-            </a>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setLoading(true)
+                  await ensureDailyPeriods(date)
+                  await fetchPeriods()
+                }}
+                className="btn btn-primary btn-sm"
+              >
+                Generate periods
+              </button>
+              <button
+                onClick={() => {
+                  setDate(new Date().toISOString().split('T')[0])
+                  setSelectedClass('')
+                }}
+                className="btn btn-secondary btn-sm"
+              >
+                View today&apos;s periods
+              </button>
+            </div>
           }
         />
       ) : (

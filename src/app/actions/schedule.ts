@@ -13,6 +13,7 @@ export async function getScheduleForDate(date: string, classId?: number) {
     .eq('date', date)
     .order('start_time')
 
+
   if (classId) query = query.eq('class_id', classId)
 
   const { data, error } = await query

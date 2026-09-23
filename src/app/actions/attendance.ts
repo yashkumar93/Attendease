@@ -314,14 +314,33 @@ export async function getAttendanceForPeriod(periodId: number) {
 export async function getAttendanceHistory(attendanceId: number) {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  const { data: history, error } = await supabase
     .from('attendance_history')
-    .select('*, profiles:changed_by(full_name)')
+    .select('*')
     .eq('attendance_id', attendanceId)
     .order('changed_at', { ascending: false })
 
   if (error) throw new Error(error.message)
-  return data as any[]
+  if (!history || history.length === 0) return []
+
+  const userIds = Array.from(new Set(history.map((h: any) => h.changed_by).filter(Boolean)))
+  let profileMap = new Map<string, { full_name: string }>()
+
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', userIds)
+
+    if (profiles) {
+      profileMap = new Map(profiles.map((p: any) => [p.id, { full_name: p.full_name }]))
+    }
+  }
+
+  return history.map((h: any) => ({
+    ...h,
+    profiles: profileMap.get(h.changed_by) || { full_name: 'Staff member' },
+  }))
 }
 
 export async function getAttendanceSummary(date: string, classId?: number) {

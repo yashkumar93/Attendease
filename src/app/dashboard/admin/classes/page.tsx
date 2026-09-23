@@ -47,10 +47,10 @@ export default async function ClassesPage() {
                   View students
                 </a>
                 <a
-                  href={`/dashboard/admin/schedule?class=${cls.id}`}
+                  href={`/dashboard/admin/attendance?class=${cls.id}`}
                   className="btn btn-secondary btn-sm flex-1 text-xs"
                 >
-                  View schedule
+                  View attendance
                 </a>
               </div>
             </div>

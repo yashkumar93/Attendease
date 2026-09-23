@@ -20,15 +20,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify admin role
+    // Verify admin or instructor role
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    if (!profile || (profile as any).role !== 'admin') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+    const role = (profile as any)?.role
+    if (!profile || (role !== 'admin' && role !== 'instructor')) {
+      return NextResponse.json({ error: 'Admin or instructor access required' }, { status: 403 })
     }
 
     const body = await request.json()
@@ -124,11 +125,14 @@ export async function POST(request: Request) {
       }
 
       // Log the export
-      await supabase.from('export_logs').insert({
+      const { error: logErr } = await supabase.from('export_logs').insert({
         scope_description: scopeDesc,
         google_sheet_url: sheetUrl,
         exported_by: user.id,
       } as any)
+      if (logErr) {
+        console.warn('Could not insert Google Sheets export log:', logErr.message)
+      }
 
       return NextResponse.json({ url: sheetUrl })
     }
@@ -153,11 +157,14 @@ export async function POST(request: Request) {
       : `attendance_export_${Date.now()}.csv`
 
     // Log CSV export
-    await supabase.from('export_logs').insert({
+    const { error: logErr } = await supabase.from('export_logs').insert({
       scope_description: scopeDesc,
       google_sheet_url: null,
       exported_by: user.id,
     } as any)
+    if (logErr) {
+      console.warn('Could not insert CSV export log:', logErr.message)
+    }
 
     return new NextResponse(csv, {
       status: 200,
