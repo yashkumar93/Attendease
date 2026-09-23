@@ -174,12 +174,33 @@ export function matchStudent(
   return { type: 'not_found' }
 }
 
+/**
+ * Clean attendance status keywords and phrases like "Marked absent", "Absent", etc.
+ */
+export function cleanAttendanceStatusKeywords(text: string): string {
+  return text
+    // Remove phrases like "- Marked absent", "(Marked absent)", "(Absent)", ": Absent", "Marked as absent"
+    .replace(/[\(\[\-–—:]*\s*\b(marked\s+(as\s+)?absent|marked\s+(as\s+)?present|absentees?|absent|present)\b[\)\]]*/gi, ' ')
+    // Remove leftover empty parentheses or brackets
+    .replace(/\(\s*\)|\[\s*\]/g, ' ')
+    // Remove bullet points and leading numbering like "1. ", "2) ", "• ", "- "
+    .replace(/^[\s*•\-–—\d\.\)\]]+/gm, '')
+}
+
 // ── Parse comma-separated name input ────────────────────────────
 export function parseNameInput(raw: string): string[] {
-  return raw
-    .split(/[,;\n]+|\band\b/i)
-    .map(n => n.trim())
-    .filter(n => n.length > 0)
+  const cleaned = cleanAttendanceStatusKeywords(raw)
+
+  return cleaned
+    .split(/[,;\n\r]+|\band\b/i)
+    .map(n => n.trim().replace(/^[\s*•\-–—\d\.\(\)\[\],:]+|[\s*•\-–—\d\.\(\)\[\],:]+$/g, '').trim())
+    .filter(n => {
+      if (n.length < 2) return false
+      const lower = n.toLowerCase()
+      if (/^(marked\s+)?(absent|present)s?$/i.test(lower)) return false
+      if (/^(status|attendance|roll\s*no|name|student)$/i.test(lower)) return false
+      return true
+    })
     // De-duplicate exact repeats (case-insensitive)
     .filter((name, idx, arr) =>
       arr.findIndex(n => n.toLowerCase() === name.toLowerCase()) === idx

@@ -653,7 +653,7 @@ async function handleAbsentees(text: string, s: ChatSession): Promise<ChatRespon
   if (isAllPresent(text)) {
     s.resolvedAbsentStudentIds = []
     s.rawAbsenteeInput = text
-    return await markAttendance(s, [])
+    return await promptConfirmation(s, [])
   }
 
   // Parse names and match against roster
@@ -687,7 +687,7 @@ async function handleAbsentees(text: string, s: ChatSession): Promise<ChatRespon
       )
     }
     return makeResponse(
-      'I couldn\'t parse any names from your input. Please enter names separated by commas.\n\n_Example: Rahul Sharma, Priya Singh_',
+      'I couldn\'t parse any names from your input. Please enter names separated by commas or lines.\n\n_Example: Rahul Sharma, Priya Singh_',
       s,
       'ask_input'
     )
@@ -698,11 +698,11 @@ async function handleAbsentees(text: string, s: ChatSession): Promise<ChatRespon
 
   const result = batchMatchNames(names, students as StudentRecord[])
 
-  // All resolved → mark attendance
+  // All resolved → prompt confirmation before marking
   if (result.ambiguous.length === 0 && result.unmatched.length === 0) {
     const absentIds = result.matched.map(m => m.student.id)
     s.resolvedAbsentStudentIds = absentIds
-    return await markAttendance(s, absentIds)
+    return await promptConfirmation(s, absentIds)
   }
 
   // Some ambiguous/unmatched → ask for clarification
@@ -754,7 +754,7 @@ async function handleAbsentees(text: string, s: ChatSession): Promise<ChatRespon
 async function handleClarifyName(text: string, s: ChatSession): Promise<ChatResponse> {
   if (text.toLowerCase().trim() === 'skip') {
     // Proceed with what we have
-    return await markAttendance(s, s.resolvedAbsentStudentIds)
+    return await promptConfirmation(s, s.resolvedAbsentStudentIds)
   }
 
   // Fetch roster again
@@ -822,12 +822,90 @@ async function handleClarifyName(text: string, s: ChatSession): Promise<ChatResp
     })
   }
 
-  // All resolved — proceed to mark
-  return await markAttendance(s, s.resolvedAbsentStudentIds)
+  // All resolved — proceed to prompt confirmation
+  return await promptConfirmation(s, s.resolvedAbsentStudentIds)
 }
 
-// ── Mark Attendance ─────────────────────────────────────────────
-async function markAttendance(s: ChatSession, absentIds: number[]): Promise<ChatResponse> {
+// ── Prompt Confirmation (Ask "Is this correct?" before marking) ───
+async function promptConfirmation(s: ChatSession, absentIds: number[]): Promise<ChatResponse> {
+  const adminClient = createAdminClient()
+
+  // Fetch all students for the class
+  const { data: students, error: studentErr } = await adminClient
+    .from('students')
+    .select('id, name, roll_number')
+    .eq('class_id', s.classSectionId!)
+    .eq('status', 'active')
+    .order('roll_number')
+
+  if (studentErr || !students || students.length === 0) {
+    return makeResponse(
+      'Failed to fetch student roster. Please try again.',
+      { ...s, step: 'menu' },
+      'error',
+      { menuOptions: getMenuOptions(s.role) }
+    )
+  }
+
+  // Check if attendance already exists
+  const { count: existingCount } = await adminClient
+    .from('attendance')
+    .select('*', { count: 'exact', head: true })
+    .eq('period_id', s.periodId!)
+
+  const isUpdate = !!(existingCount && existingCount > 0)
+  const totalAbsent = absentIds.length
+  const totalPresent = students.length - totalAbsent
+  const absentSet = new Set(absentIds)
+
+  const absentNames = (students as any[])
+    .filter((st: any) => absentSet.has(st.id))
+    .map((st: any) => st.name)
+
+  s.resolvedAbsentStudentIds = absentIds
+  s.attendanceWritten = false
+  s.step = 'confirm'
+
+  const confirmData: ConfirmationData = {
+    periodLabel: s.periodLabel!,
+    className: s.className!,
+    date: formatDateDisplay(s.targetDate!),
+    totalPresent,
+    totalAbsent,
+    totalStudents: students.length,
+    absentNames,
+    isUpdate,
+  }
+
+  let msg = `I identified the following attendance details for **${s.periodLabel} — ${s.className}** on **${formatDateDisplay(s.targetDate!)}**:\n\n`
+  if (absentNames.length > 0) {
+    msg += `❌ **Absent students (${totalAbsent}):**\n`
+    for (const name of absentNames) {
+      msg += `• ${name}\n`
+    }
+  } else {
+    msg += `✅ **All students present!**\n`
+  }
+
+  msg += `\n📊 **Summary:** ${totalPresent} Present, ${totalAbsent} Absent (out of ${students.length} students)`
+  if (isUpdate) {
+    msg += `\n\n⚠️ _Note: Attendance was already marked for this period. Confirming will update the records._`
+  }
+  msg += `\n\n**Is this correct?** Please reply **"correct"** to save attendance or **"update"** to make changes.`
+
+  return makeResponse(
+    msg,
+    s,
+    'confirmation',
+    { confirmationData: confirmData }
+  )
+}
+
+// Backward-compat alias
+const markAttendance = promptConfirmation
+
+// ── Save Attendance to Database (Executed upon confirmation) ─────
+async function saveAttendanceToDb(s: ChatSession, absentIds: number[]): Promise<ChatResponse> {
   if (!acquireLock()) {
     return makeResponse(
       '⏳ Another attendance request is being processed. Please wait a moment and try again.',
@@ -839,7 +917,6 @@ async function markAttendance(s: ChatSession, absentIds: number[]): Promise<Chat
   try {
     const adminClient = createAdminClient()
 
-    // Fetch all students for the class
     const { data: students, error: studentErr } = await adminClient
       .from('students')
       .select('id, name, roll_number')
@@ -857,14 +934,12 @@ async function markAttendance(s: ChatSession, absentIds: number[]): Promise<Chat
       )
     }
 
-    // Check if attendance already exists
     const { count: existingCount } = await adminClient
       .from('attendance')
       .select('*', { count: 'exact', head: true })
       .eq('period_id', s.periodId!)
 
     const isUpdate = !!(existingCount && existingCount > 0)
-
     const totalAbsent = absentIds.length
     const totalPresent = students.length - totalAbsent
     const absentSet = new Set(absentIds)
@@ -878,61 +953,37 @@ async function markAttendance(s: ChatSession, absentIds: number[]): Promise<Chat
       ...(isUpdate ? { last_modified_by: s.userId, last_modified_at: now } : {}),
     }))
 
-    // Execute upsert in background using after()
-    after(async () => {
-      try {
-        const { error: upsertErr } = await adminClient
-          .from('attendance')
-          .upsert(records, { onConflict: 'period_id,student_id' })
-        if (upsertErr) {
-          console.error('[Chatbot Background Upsert Error]:', upsertErr.message)
-        }
-      } catch (err) {
-        console.error('[Chatbot Background Exception]:', err)
-      } finally {
-        releaseLock()
-      }
-    })
+    // Execute upsert directly and securely
+    const { error: upsertErr } = await adminClient
+      .from('attendance')
+      .upsert(records, { onConflict: 'period_id,student_id' })
 
-    // Build success message
+    releaseLock()
+
+    if (upsertErr) {
+      console.error('[Chatbot Upsert Error]:', upsertErr.message)
+      return makeResponse(
+        `Failed to save attendance: ${upsertErr.message}. Please try again.`,
+        s,
+        'error'
+      )
+    }
+
+    s.attendanceWritten = true
+    const nextSession = createFreshSession(s.userId, s.role)
+
     const absentNames = (students as any[])
       .filter((st: any) => absentSet.has(st.id))
       .map((st: any) => st.name)
 
-    const actionLabel = isUpdate ? 'Updated' : 'Marked'
-
-    // Try to get a conversational response from AI
-    let finalMsg = ''
-    const baseInfo = `${actionLabel} attendance for ${s.periodLabel} — ${s.className} on ${formatDateDisplay(s.targetDate!)}.
-Present: ${totalPresent}, Absent: ${totalAbsent} of ${students.length} students.${absentNames.length > 0 ? ` Absent: ${absentNames.join(', ')}.` : ' Everyone is present!'}${isUpdate ? ' (Updated — changes saved to audit trail.)' : ''}`
-
-    try {
-      finalMsg = await generateConversationalResponse(baseInfo, isUpdate)
-    } catch {
-      finalMsg = baseInfo
-    }
-
-    if (!finalMsg) finalMsg = baseInfo
-
-    s.attendanceWritten = true
-    s.step = 'confirm'
-
-    const confirmData: ConfirmationData = {
-      periodLabel: s.periodLabel!,
-      className: s.className!,
-      date: formatDateDisplay(s.targetDate!),
-      totalPresent,
-      totalAbsent,
-      totalStudents: students.length,
-      absentNames,
-      isUpdate,
-    }
+    const actionLabel = isUpdate ? 'updated' : 'marked'
+    const successMsg = `Great, attendance for **${s.periodLabel} — ${s.className}** on **${formatDateDisplay(s.targetDate!)}** has been **${actionLabel}**! ✓\n\n• **Present:** ${totalPresent}\n• **Absent:** ${totalAbsent} (${absentNames.length > 0 ? absentNames.join(', ') : 'None'})\n\nWhat would you like to do next?`
 
     return makeResponse(
-      finalMsg + '\n\n**Is everything correct, or would you like to update something?**',
-      s,
-      'confirmation',
-      { confirmationData: confirmData }
+      successMsg,
+      nextSession,
+      'menu',
+      { menuOptions: getMenuOptions(s.role) }
     )
   } catch (err: any) {
     releaseLock()
@@ -949,13 +1000,8 @@ async function handleConfirmation(text: string, s: ChatSession): Promise<ChatRes
   const t = text.toLowerCase().trim()
 
   if (t === 'correct' || t === 'yes' || t === 'done' || t === 'ok' || t === 'looks good' || t === 'confirm' || t === 'y') {
-    s = createFreshSession(s.userId, s.role)
-    return makeResponse(
-      'Great, attendance saved! ✓\n\nWhat would you like to do next?',
-      s,
-      'menu',
-      { menuOptions: getMenuOptions(s.role) }
-    )
+    // Actually save to DB and mark attendance now!
+    return await saveAttendanceToDb(s, s.resolvedAbsentStudentIds)
   }
 
   if (t === 'update' || t === 'edit' || t === 'change' || t === 'modify' || t === 'fix' || t === 'no') {
@@ -966,7 +1012,7 @@ async function handleConfirmation(text: string, s: ChatSession): Promise<ChatRes
     s.unresolvedNames = []
     s.ambiguousNames = []
     return makeResponse(
-      `Reopening attendance for **${s.periodLabel}** — **${s.className}**.\n\nPlease list the names of **absent students** again (comma-separated), or say **"all present"**.`,
+      `Reopening attendance for **${s.periodLabel}** — **${s.className}**.\n\nPlease list the names of **absent students** again, or say **"all present"**.`,
       s,
       'ask_input'
     )
@@ -974,7 +1020,7 @@ async function handleConfirmation(text: string, s: ChatSession): Promise<ChatRes
 
   // Unrecognized response
   return makeResponse(
-    'Please reply **"correct"** to confirm, or **"update"** to make changes.',
+    'Please reply **"correct"** to confirm and save attendance, or **"update"** to make changes.',
     s,
     'text'
   )
