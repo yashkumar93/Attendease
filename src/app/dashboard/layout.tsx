@@ -1,6 +1,7 @@
 import { Sidebar } from '@/components/ui/Sidebar'
 import { ToastProvider } from '@/components/ui/ToastProvider'
 import { ChatBubble } from '@/components/ui/ChatBubble'
+import { SessionTimeout } from '@/components/auth/SessionTimeout'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +15,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
       <ChatBubble />
+      <SessionTimeout />
     </ToastProvider>
   )
 }

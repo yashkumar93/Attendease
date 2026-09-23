@@ -1,9 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { AnthropicSpikeMark } from '@/components/ui/AnthropicSpikeMark'
+
+function TimeoutNotification() {
+  const searchParams = useSearchParams()
+  const isTimeout = searchParams.get('timeout') === 'true'
+
+  if (!isTimeout) return null
+
+  return (
+    <div className="mb-5 px-3.5 py-3 rounded-lg bg-warning-light border border-warning/30 text-warning-foreground text-xs animate-fade-in flex items-start gap-2.5 shadow-sm">
+      <svg className="w-4 h-4 flex-shrink-0 text-warning mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+      </svg>
+      <div>
+        <p className="font-semibold text-ink">Session Expired</p>
+        <p className="text-muted mt-0.5 leading-relaxed">
+          You were automatically logged out due to 30 minutes of inactivity. Please sign in to resume.
+        </p>
+      </div>
+    </div>
+  )
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -74,6 +95,11 @@ export default function LoginPage() {
 
           <h1 className="text-ink text-[22px] font-semibold tracking-tight mb-1">Sign in</h1>
           <p className="text-muted text-sm mb-7">Enter your institutional credentials to continue.</p>
+
+          {/* Timeout notification */}
+          <Suspense fallback={null}>
+            <TimeoutNotification />
+          </Suspense>
 
           {/* Error notification */}
           {error && (
