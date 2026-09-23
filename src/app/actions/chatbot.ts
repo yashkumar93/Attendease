@@ -750,10 +750,47 @@ async function handleAbsentees(text: string, s: ChatSession): Promise<ChatRespon
   })
 }
 
+// ── Affirmative response detection during clarification ─────────
+function isAffirmativeConfirmationOnly(text: string): boolean {
+  const t = text.trim().toLowerCase()
+    .replace(/^(yes|y|yeah|yup|yep|sure|ok|okay)\b[,:\s]*/i, '')
+    .trim()
+
+  if (t === '' || /^(all|both|these|all of them|all three|these three|these \d+|all \d+|\d+|correct|confirm|right|fine|please)$/i.test(t)) {
+    return true
+  }
+  return false
+}
+
+function isAffirmativeClarification(text: string): boolean {
+  const t = text.trim().toLowerCase()
+  if (/^(yes|y|yeah|yup|yep|correct|confirm|right|fine|ok|okay|sure)\b/i.test(t)) {
+    return isAffirmativeConfirmationOnly(t)
+  }
+  return /^(all|both|these|all of them|all three|these three|all \d+|these \d+)$/i.test(t)
+}
+
 // ── Handle Name Clarification ───────────────────────────────────
 async function handleClarifyName(text: string, s: ChatSession): Promise<ChatResponse> {
-  if (text.toLowerCase().trim() === 'skip') {
+  const trimmed = text.toLowerCase().trim()
+
+  if (trimmed === 'skip') {
     // Proceed with what we have
+    return await promptConfirmation(s, s.resolvedAbsentStudentIds)
+  }
+
+  // If user replies with affirmative ("yes these three", "both", "all", "correct", etc.)
+  // accept all ambiguous suggestions as intended
+  if (isAffirmativeClarification(text) && s.ambiguousNames && s.ambiguousNames.length > 0) {
+    for (const amb of s.ambiguousNames) {
+      for (const sug of amb.suggestions) {
+        if (!s.resolvedAbsentStudentIds.includes(sug.id)) {
+          s.resolvedAbsentStudentIds.push(sug.id)
+        }
+      }
+    }
+    s.ambiguousNames = []
+    s.unresolvedNames = []
     return await promptConfirmation(s, s.resolvedAbsentStudentIds)
   }
 

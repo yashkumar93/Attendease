@@ -22,8 +22,9 @@ export interface StudentRecord {
 }
 
 export interface MatchResult {
-  type: 'exact' | 'ambiguous' | 'not_found'
+  type: 'exact' | 'ambiguous' | 'not_found' | 'multiple'
   student?: StudentRecord
+  students?: StudentRecord[]
   suggestions?: StudentRecord[]
   confidence?: number
 }
@@ -71,6 +72,102 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export interface MultiMatchResult {
+  matchedStudents: StudentRecord[]
+  unconsumed: string[]
+}
+
+/**
+ * Scan an arbitrary string to locate multiple non-overlapping student matches
+ * (names or roll numbers) against the class roster.
+ */
+export function findStudentsInString(
+  inputStr: string,
+  students: StudentRecord[]
+): MultiMatchResult {
+  const normInput = normalize(inputStr)
+  const sorted = [...students].sort((a, b) => b.name.length - a.name.length)
+  const matches: { student: StudentRecord; start: number; end: number }[] = []
+  const consumed = new Array(normInput.length).fill(false)
+
+  // 1. Search student names (longer names first to prevent partial substrings from stealing)
+  for (const st of sorted) {
+    const sName = normalize(st.name)
+    if (sName.length < 3) continue
+    const regex = new RegExp('\\b' + escapeRegExp(sName) + '\\b', 'gi')
+    let match: RegExpExecArray | null
+    while ((match = regex.exec(normInput)) !== null) {
+      const start = match.index
+      const end = start + match[0].length
+      let alreadyOverlap = false
+      for (let i = start; i < end; i++) {
+        if (consumed[i]) {
+          alreadyOverlap = true
+          break
+        }
+      }
+      if (!alreadyOverlap) {
+        for (let i = start; i < end; i++) consumed[i] = true
+        if (!matches.some(m => m.student.id === st.id)) {
+          matches.push({ student: st, start, end })
+        }
+      }
+    }
+  }
+
+  // 2. Also check roll numbers
+  for (const st of students) {
+    if (!st.roll_number) continue
+    const roll = st.roll_number.toLowerCase().trim()
+    if (roll.length < 2) continue
+    const regex = new RegExp('\\b' + escapeRegExp(roll) + '\\b', 'gi')
+    let match: RegExpExecArray | null
+    while ((match = regex.exec(normInput)) !== null) {
+      const start = match.index
+      const end = start + match[0].length
+      let alreadyOverlap = false
+      for (let i = start; i < end; i++) {
+        if (consumed[i]) {
+          alreadyOverlap = true
+          break
+        }
+      }
+      if (!alreadyOverlap) {
+        for (let i = start; i < end; i++) consumed[i] = true
+        if (!matches.some(m => m.student.id === st.id)) {
+          matches.push({ student: st, start, end })
+        }
+      }
+    }
+  }
+
+  // 3. Collect remaining unconsumed substrings
+  const unconsumedChunks: string[] = []
+  let currentChunk = ''
+  for (let i = 0; i < normInput.length; i++) {
+    if (!consumed[i]) {
+      currentChunk += normInput[i]
+    } else {
+      if (currentChunk.trim().length >= 2) {
+        unconsumedChunks.push(currentChunk.trim())
+      }
+      currentChunk = ''
+    }
+  }
+  if (currentChunk.trim().length >= 2) {
+    unconsumedChunks.push(currentChunk.trim())
+  }
+
+  return {
+    matchedStudents: matches.sort((a, b) => a.start - b.start).map(m => m.student),
+    unconsumed: unconsumedChunks,
+  }
+}
+
 // ── Confidence thresholds ───────────────────────────────────────
 const FUZZY_THRESHOLD = 0.65  // Below this, don't even suggest
 const AUTO_RESOLVE_THRESHOLD = 0.85  // Above this with single match → auto-resolve
@@ -93,6 +190,16 @@ export function matchStudent(
   const rollMatch = students.find(s => s.roll_number.toLowerCase().trim() === input)
   if (rollMatch) {
     return { type: 'exact', student: rollMatch, confidence: 1.0 }
+  }
+
+  // ── Strategy 3: Multi-student detection in a single token/string ──
+  const multi = findStudentsInString(input, students)
+  if (multi.matchedStudents.length > 1) {
+    return {
+      type: 'multiple',
+      students: multi.matchedStudents,
+      confidence: 1.0,
+    }
   }
 
   // ── Strategy 3: Single part-name match (first name or last name only) ──
@@ -176,11 +283,13 @@ export function matchStudent(
 
 /**
  * Clean attendance status keywords and phrases like "Marked absent", "Absent", etc.
+ * Converts status boundaries into newlines so that concatenated or multi-line names
+ * are neatly separated.
  */
 export function cleanAttendanceStatusKeywords(text: string): string {
   return text
-    // Remove phrases like "- Marked absent", "(Marked absent)", "(Absent)", ": Absent", "Marked as absent"
-    .replace(/[\(\[\-–—:]*\s*\b(marked\s+(as\s+)?absent|marked\s+(as\s+)?present|absentees?|absent|present)\b[\)\]]*/gi, ' ')
+    // Replace sequences of status keywords/phrases (possibly repeated like "Marked absent Absent") with a newline
+    .replace(/(?:[\(\[\-–—:]*\s*\b(?:marked\s+(?:as\s+)?absent|marked\s+(?:as\s+)?present|absentees?|absent|present)\b[\)\]]*\s*)+/gi, '\n')
     // Remove leftover empty parentheses or brackets
     .replace(/\(\s*\)|\[\s*\]/g, ' ')
     // Remove bullet points and leading numbering like "1. ", "2) ", "• ", "- "
@@ -189,7 +298,9 @@ export function cleanAttendanceStatusKeywords(text: string): string {
 
 // ── Parse comma-separated name input ────────────────────────────
 export function parseNameInput(raw: string): string[] {
-  const cleaned = cleanAttendanceStatusKeywords(raw)
+  let cleaned = cleanAttendanceStatusKeywords(raw)
+  // Strip leading affirmative prefix if user said e.g. "Yes, Mohit and Nikhil"
+  cleaned = cleaned.replace(/^(yes|yeah|yup|yep|ok|okay)\b[,:\s]*/i, '')
 
   return cleaned
     .split(/[,;\n\r]+|\band\b/i)
@@ -243,10 +354,44 @@ export function batchMatchNames(
   }
 
   for (const name of names) {
+    // 1. Check if this single entry contains multiple students from the roster
+    const multi = findStudentsInString(name, students)
+    if (multi.matchedStudents.length > 1) {
+      for (const st of multi.matchedStudents) {
+        if (!result.matched.some(m => m.student.id === st.id)) {
+          result.matched.push({ input: st.name, student: st })
+        }
+      }
+      for (const unconsumed of multi.unconsumed) {
+        const sub = matchStudent(unconsumed, students)
+        const matchedSubStudent = sub.student
+        if (sub.type === 'exact' && matchedSubStudent) {
+          if (!result.matched.some(m => m.student.id === matchedSubStudent.id)) {
+            result.matched.push({ input: unconsumed, student: matchedSubStudent })
+          }
+        } else if (sub.type === 'ambiguous' && sub.suggestions) {
+          result.ambiguous.push({ input: unconsumed, suggestions: sub.suggestions })
+        } else if (sub.type === 'not_found') {
+          result.unmatched.push(unconsumed)
+        }
+      }
+      continue
+    }
+
+    // 2. Standard matching
     const match = matchStudent(name, students)
     switch (match.type) {
       case 'exact':
         result.matched.push({ input: name, student: match.student! })
+        break
+      case 'multiple':
+        if (match.students) {
+          for (const st of match.students) {
+            if (!result.matched.some(m => m.student.id === st.id)) {
+              result.matched.push({ input: st.name, student: st })
+            }
+          }
+        }
         break
       case 'ambiguous':
         result.ambiguous.push({ input: name, suggestions: match.suggestions! })
