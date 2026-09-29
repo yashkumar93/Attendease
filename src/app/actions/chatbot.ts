@@ -229,26 +229,20 @@ async function handleMenu(text: string, s: ChatSession): Promise<ChatResponse> {
     )
   }
 
-  if (intent === 'general_query') {
-    s.currentIntent = 'general_query'
-    s.step = 'query_intent'
+  if (intent === 'general_query' || text.includes('?') || text.toLowerCase().includes('analytic') || text.toLowerCase().includes('stat') || text.toLowerCase().includes('report') || text.toLowerCase().startsWith('who') || text.toLowerCase().startsWith('how') || text.toLowerCase().startsWith('show')) {
     return makeResponse(
-      'What would you like to know? You can ask about attendance statistics, student records, or any other data.\n\n**Examples:**\n• "How many times was Priya absent this month?"\n• "Show me attendance for Period 3 today"\n• "Who are the most absent students this week?"',
+      '📊 **Analytics has moved to its own dedicated section!**\n\n' +
+      'We\'ve upgraded analytics with interactive charts, subject performance matrices, at-risk student watchlists, and an AI intelligence bar in the new **[Analytics](/dashboard/analytics)** tab in the sidebar.\n\n' +
+      'I\'m dedicated to helping you mark and update attendance records. Choose an option below to proceed:',
       s,
-      'ask_input'
+      'menu',
+      { menuOptions: getMenuOptions(s.role) }
     )
-  }
-
-  // If we couldn't detect intent from text, check if it's a direct analytics query
-  if (text.includes('?') || text.toLowerCase().startsWith('how') || text.toLowerCase().startsWith('show') || text.toLowerCase().startsWith('who') || text.toLowerCase().startsWith('what')) {
-    s.currentIntent = 'general_query'
-    s.step = 'query_intent'
-    return handleAnalyticsQuery(text, s)
   }
 
   // Unrecognized — show menu again
   return makeResponse(
-    'I didn\'t quite understand that. Please choose an option below, or ask me a question about attendance.',
+    'I didn\'t quite understand that. Please choose an option below to mark or update attendance:',
     s,
     'menu',
     { menuOptions: getMenuOptions(s.role) }
@@ -1190,12 +1184,6 @@ function getMenuOptions(role: string): MenuOption[] {
       icon: 'update',
       disabled: !canMark,
       disabledReason: canMark ? undefined : 'Only instructors and admins can update attendance',
-    },
-    {
-      id: 'general_query',
-      label: 'Ask a question',
-      description: 'Query attendance data, statistics, and reports',
-      icon: 'query',
     },
   ]
 }

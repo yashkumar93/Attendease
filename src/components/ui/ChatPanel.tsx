@@ -184,7 +184,7 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
   const getPlaceholder = (): string => {
     if (!session) return 'Type a message...'
     switch (session.step) {
-      case 'menu': return 'Choose an option above or type a question...'
+      case 'menu': return 'Choose an option above or type a message...'
       case 'select_class': return 'Enter class name or number...'
       case 'ask_date': return 'Enter date (DD/MM/YYYY)...'
       case 'select_period': case 'show_periods': return 'Enter period number (1–7)...'
@@ -192,12 +192,11 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
       case 'clarify_name': return 'Enter correct name or "skip"...'
       case 'confirm': return '"correct" or "update"...'
       case 'ask_overwrite': return '"overwrite" or "cancel"...'
-      case 'query_intent': case 'query_db': return 'Ask me anything about attendance...'
       default: return 'Type a message...'
     }
   }
 
-  const isInFlow = session && session.step !== 'menu' && session.step !== 'done' && session.step !== 'query_intent'
+  const isInFlow = session && session.step !== 'menu' && session.step !== 'done'
 
   return (
     <div className="chat-panel">
@@ -212,9 +211,7 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
             <p className="text-[11px] text-on-dark-soft">
               {session?.step === 'ask_absentees' || session?.step === 'update_loop'
                 ? `Marking ${session.periodLabel || 'attendance'}`
-                : session?.currentIntent === 'general_query'
-                  ? 'Analytics Mode'
-                  : 'Attendance Assistant • IST'}
+                : 'Attendance Assistant • IST'}
             </p>
           </div>
         </div>
@@ -436,7 +433,6 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
             <span>
               {session.currentIntent === 'mark_today' && 'Marking today\'s attendance'}
               {session.currentIntent === 'update_previous' && `Updating ${session.targetDate ? formatDateShort(session.targetDate) : 'previous attendance'}`}
-              {session.currentIntent === 'general_query' && 'Analytics query'}
               {session.periodLabel && ` · ${session.periodLabel}`}
             </span>
           </div>
