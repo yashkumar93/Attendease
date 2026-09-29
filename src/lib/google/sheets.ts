@@ -70,9 +70,16 @@ export interface AttendanceRow {
   markedAt: string
 }
 
+function extractSpreadsheetId(val: string): string {
+  const match = val.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+  return match ? match[1] : val.trim()
+}
+
 /**
- * Creates a new Google Sheet, writes attendance data with formatting,
- * shares it with the configured email, and returns the sheet URL.
+ * Creates or appends attendance data to a Google Sheet with formatting.
+ * If GOOGLE_SPREADSHEET_ID is configured, creates a dedicated tab in that spreadsheet.
+ * Otherwise, attempts to create a new spreadsheet file.
+ * Returns the direct URL to the sheet/tab.
  */
 export async function createAttendanceSheet(
   title: string,
@@ -80,31 +87,13 @@ export async function createAttendanceSheet(
 ): Promise<string> {
   const { sheets, drive } = getGoogleClients()
   const shareEmail = process.env.GOOGLE_SHEETS_SHARE_EMAIL
+  const masterSpreadsheetEnv = process.env.GOOGLE_SPREADSHEET_ID
 
-  // 1. Create a new spreadsheet
-  let createRes;
-  try {
-    createRes = await sheets.spreadsheets.create({
-      requestBody: {
-        properties: { title },
-        sheets: [
-          {
-            properties: {
-              title: 'Attendance',
-              gridProperties: { frozenRowCount: 1 },
-            },
-          },
-        ],
-      },
-    })
-  } catch (err) {
-    throw new Error(`Failed to create spreadsheet (Is Google Sheets API enabled?): ${googleErrMsg(err)}`)
-  }
+  let spreadsheetId: string
+  let sheetId: number
+  let tabTitle = 'Attendance'
 
-  const spreadsheetId = createRes.data.spreadsheetId!
-  const sheetId = createRes.data.sheets![0].properties!.sheetId!
-
-  // 2. Write header + data rows
+  // Header + data rows
   const header = [
     'Date', 'Class', 'Subject', 'Period Time', 'Period Type',
     'Instructor', 'Student Name', 'Roll Number', 'Status', 'Remark', 'Marked At',
@@ -115,10 +104,130 @@ export async function createAttendanceSheet(
     r.instructor, r.studentName, r.rollNumber, r.status, r.remark, r.markedAt,
   ])
 
+  if (masterSpreadsheetEnv) {
+    // ── Master Spreadsheet Mode (Recommended for Service Accounts) ──────────
+    spreadsheetId = extractSpreadsheetId(masterSpreadsheetEnv)
+
+    let meta
+    try {
+      meta = await sheets.spreadsheets.get({ spreadsheetId })
+    } catch (err) {
+      throw new Error(
+        `Failed to access master spreadsheet (${spreadsheetId}): ${googleErrMsg(err)}. ` +
+        'Please ensure the Google Sheet is shared with your service account as Editor.'
+      )
+    }
+
+    // Google Sheets tab names: max 100 chars, cannot contain \ / ? * [ ] :
+    const cleanTitle = title.replace(/[\\/?*[\]:]/g, '-').slice(0, 80).trim()
+    const existingSheets = meta.data.sheets || []
+    const existingTitles = new Set(existingSheets.map((s) => s.properties?.title))
+
+    tabTitle = cleanTitle || 'Attendance'
+    let counter = 1
+    while (existingTitles.has(tabTitle)) {
+      counter++
+      tabTitle = `${cleanTitle.slice(0, 75)} (${counter})`
+    }
+
+    try {
+      const addSheetRes = await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              addSheet: {
+                properties: {
+                  title: tabTitle,
+                  gridProperties: { frozenRowCount: 1 },
+                },
+              },
+            },
+          ],
+        },
+      })
+
+      sheetId = addSheetRes.data.replies?.[0]?.addSheet?.properties?.sheetId!
+
+      // If the spreadsheet only had the default untouched 'Sheet1', remove it
+      if (
+        existingSheets.length === 1 &&
+        existingSheets[0].properties?.title === 'Sheet1' &&
+        existingSheets[0].properties?.sheetId !== undefined
+      ) {
+        try {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+              requests: [
+                {
+                  deleteSheet: {
+                    sheetId: existingSheets[0].properties.sheetId,
+                  },
+                },
+              ],
+            },
+          })
+        } catch {
+          // Ignore if Sheet1 cannot be removed
+        }
+      }
+    } catch (err) {
+      throw new Error(`Failed to create attendance tab in spreadsheet: ${googleErrMsg(err)}`)
+    }
+  } else {
+    // ── Fallback: Create a brand new spreadsheet file ───────────────────────
+    let createRes
+    try {
+      createRes = await sheets.spreadsheets.create({
+        requestBody: {
+          properties: { title },
+          sheets: [
+            {
+              properties: {
+                title: 'Attendance',
+                gridProperties: { frozenRowCount: 1 },
+              },
+            },
+          ],
+        },
+      })
+    } catch (err) {
+      throw new Error(
+        `Failed to create spreadsheet: ${googleErrMsg(err)}. ` +
+        'Note: Google Service Accounts have 0 Drive quota. Set GOOGLE_SPREADSHEET_ID in .env.local to use an existing shared sheet.'
+      )
+    }
+
+    spreadsheetId = createRes.data.spreadsheetId!
+    sheetId = createRes.data.sheets![0].properties!.sheetId!
+    tabTitle = 'Attendance'
+
+    if (shareEmail) {
+      try {
+        await drive.permissions.create({
+          fileId: spreadsheetId,
+          requestBody: {
+            type: 'user',
+            role: 'writer',
+            emailAddress: shareEmail,
+          },
+          sendNotificationEmail: false,
+        })
+      } catch (shareErr) {
+        console.warn(
+          `[Sheets] Could not share sheet with ${shareEmail}: ${googleErrMsg(shareErr)}. ` +
+          'Make sure Google Drive API is enabled for this project.'
+        )
+      }
+    }
+  }
+
+  // 2. Write header + data rows
   try {
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Attendance!A1',
+      range: `'${tabTitle}'!A1`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [header, ...dataRows],
@@ -220,29 +329,5 @@ export async function createAttendanceSheet(
     throw new Error(`Failed to format sheet: ${googleErrMsg(err)}`)
   }
 
-  // 4. Share with the configured email so they can open it
-  // Wrapped in try/catch — sharing requires Google Drive API to be enabled.
-  // If it fails, the sheet is still created and accessible to the service account.
-  if (shareEmail) {
-    try {
-      await drive.permissions.create({
-        fileId: spreadsheetId,
-        requestBody: {
-          type: 'user',
-          role: 'writer',
-          emailAddress: shareEmail,
-        },
-        sendNotificationEmail: false,
-      })
-    } catch (shareErr) {
-      // Drive API not enabled or insufficient permissions — sheet is created but not shared.
-      // Enable Google Drive API at: https://console.cloud.google.com/apis/library/drive.googleapis.com
-      console.warn(
-        `[Sheets] Could not share sheet with ${shareEmail}: ${googleErrMsg(shareErr)}. ` +
-        'Make sure Google Drive API is enabled for this project.'
-      )
-    }
-  }
-
-  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetId}`
 }
