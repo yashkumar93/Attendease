@@ -59,13 +59,12 @@ function getGoogleClients() {
 export interface AttendanceRow {
   date: string
   className: string
-  subjectName: string
   periodTime: string
   periodType: string
-  instructor: string
   studentName: string
   rollNumber: string
   status: string
+  markedBy: string
   remark: string
   markedAt: string
 }
@@ -95,13 +94,13 @@ export async function createAttendanceSheet(
 
   // Header + data rows
   const header = [
-    'Date', 'Class', 'Subject', 'Period Time', 'Period Type',
-    'Instructor', 'Student Name', 'Roll Number', 'Status', 'Remark', 'Marked At',
+    'Date', 'Class', 'Period Time', 'Period Type',
+    'Student Name', 'Roll Number', 'Status', 'Marked By', 'Remark', 'Marked At',
   ]
 
   const dataRows = rows.map((r) => [
-    r.date, r.className, r.subjectName, r.periodTime, r.periodType,
-    r.instructor, r.studentName, r.rollNumber, r.status, r.remark, r.markedAt,
+    r.date, r.className, r.periodTime, r.periodType,
+    r.studentName, r.rollNumber, r.status, r.markedBy, r.remark, r.markedAt,
   ])
 
   if (masterSpreadsheetEnv) {
@@ -273,11 +272,11 @@ export async function createAttendanceSheet(
               index: 0,
             },
           },
-          // Colour "Present" cells green, "Absent" cells red (status column = index 8)
+          // Colour "Present" cells green, "Absent" cells red (status column = index 6)
           {
             addConditionalFormatRule: {
               rule: {
-                ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 8, endColumnIndex: 9 }],
+                ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 }],
                 booleanRule: {
                   condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Present' }] },
                   format: {
@@ -292,7 +291,7 @@ export async function createAttendanceSheet(
           {
             addConditionalFormatRule: {
               rule: {
-                ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 8, endColumnIndex: 9 }],
+                ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 }],
                 booleanRule: {
                   condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Absent' }] },
                   format: {

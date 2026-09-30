@@ -39,13 +39,11 @@ export async function POST(request: Request) {
     let query = supabase
       .from('attendance')
       .select(`
-        status, marked_at, remark,
+        status, marked_at, remark, marked_by,
         students(name, roll_number),
         periods!inner(
-          id, date, start_time, end_time, period_type, instructor_id,
-          classes(class_name),
-          subjects(subject_name),
-          profiles(full_name)
+          id, date, start_time, end_time, period_type,
+          classes(class_name)
         )
       `)
 
@@ -74,23 +72,36 @@ export async function POST(request: Request) {
       )
     }
 
-    // Map records to a unified row shape
+    // Resolve human names for marked_by
+    const markerIds = Array.from(
+      new Set((records as any[]).map((r: any) => r.marked_by).filter(Boolean))
+    )
+    const markerMap = new Map<string, string>()
+    if (markerIds.length > 0) {
+      const { data: markerProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', markerIds)
+      for (const p of markerProfiles || []) {
+        markerMap.set(p.id, p.full_name)
+      }
+    }
+
+    // Map records to a unified row shape (removed Subject and Instructor, added Marked By)
     const rows: AttendanceRow[] = (records as any[]).map((r: any) => {
       const period = r.periods as any
       const student = r.students as any
       const cls = period?.classes as any
-      const subject = period?.subjects as any
-      const instructor = period?.profiles as any
+      const markerName = markerMap.get(r.marked_by) || (r.marked_by ? 'Staff' : 'System')
       return {
         date: period?.date || '',
         className: cls?.class_name || '',
-        subjectName: subject?.subject_name || '',
         periodTime: `${period?.start_time?.slice(0, 5)} - ${period?.end_time?.slice(0, 5)}`,
         periodType: period?.period_type || '',
-        instructor: instructor?.full_name || '',
         studentName: student?.name || '',
         rollNumber: student?.roll_number || '',
         status: r.status,
+        markedBy: markerName,
         remark: r.remark || '',
         markedAt: r.marked_at ? new Date(r.marked_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
       }
@@ -100,7 +111,7 @@ export async function POST(request: Request) {
     const scopeParts: string[] = []
     const firstPeriod = (records[0] as any)?.periods as any
     if (periodId) {
-      scopeParts.push(`Period: ${firstPeriod?.subjects?.subject_name || 'Unassigned'} (${firstPeriod?.start_time?.slice(0, 5)} – ${firstPeriod?.end_time?.slice(0, 5)}) on ${firstPeriod?.date}`)
+      scopeParts.push(`Period: ${firstPeriod?.classes?.class_name || 'Class'} (${firstPeriod?.start_time?.slice(0, 5)} – ${firstPeriod?.end_time?.slice(0, 5)}) on ${firstPeriod?.date}`)
     } else if (date) {
       scopeParts.push(`Date: ${date}`)
     } else if (dateFrom && dateTo) {
@@ -139,13 +150,13 @@ export async function POST(request: Request) {
 
     // ── CSV export (default) ───────────────────────────────────────────────
     const csvHeaders = [
-      'Date', 'Class', 'Subject', 'Period Time', 'Period Type',
-      'Instructor', 'Student Name', 'Roll Number', 'Status', 'Remark', 'Marked At',
+      'Date', 'Class', 'Period Time', 'Period Type',
+      'Student Name', 'Roll Number', 'Status', 'Marked By', 'Remark', 'Marked At',
     ]
 
     const csvRows = rows.map((r) => [
-      r.date, r.className, r.subjectName, r.periodTime, r.periodType,
-      r.instructor, r.studentName, r.rollNumber, r.status, r.remark, r.markedAt,
+      r.date, r.className, r.periodTime, r.periodType,
+      r.studentName, r.rollNumber, r.status, r.markedBy, r.remark, r.markedAt,
     ])
 
     const csv = [csvHeaders, ...csvRows]
@@ -153,7 +164,7 @@ export async function POST(request: Request) {
       .join('\n')
 
     const filename = periodId
-      ? `attendance_${firstPeriod?.date}_${firstPeriod?.subjects?.subject_name?.replace(/\s+/g, '_') || 'period'}.csv`
+      ? `attendance_${firstPeriod?.date}_${firstPeriod?.classes?.class_name?.replace(/\s+/g, '_') || 'period'}.csv`
       : `attendance_export_${Date.now()}.csv`
 
     // Log CSV export
