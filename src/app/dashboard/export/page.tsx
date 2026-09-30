@@ -22,8 +22,11 @@ export default function ExportPage() {
   const [dateTo, setDateTo] = useState('')
   const [classId, setClassId] = useState<number | ''>('')
   const [periodId, setPeriodId] = useState<number | ''>('')
-  const [availablePeriods, setAvailablePeriods] = useState<any[]>([])
+  const [availablePeriods, setAvailablePeriods] = useState<any[]>([])  // for single date
+  const [rangeperiods, setRangePeriods] = useState<any[]>([])           // distinct periods for date range
   const [periodsLoading, setPeriodsLoading] = useState(false)
+  const [rangePeriodId, setRangePeriodId] = useState<number | ''>('')   // period filter for date range
+  const [rangePeriodLoading, setRangePeriodLoading] = useState(false)
 
   useEffect(() => {
     supabase.from('classes').select('*').order('id').then(({ data }) => {
@@ -32,6 +35,7 @@ export default function ExportPage() {
     fetchLogs()
   }, [supabase])
 
+  // Load periods for single-date mode
   useEffect(() => {
     if (scopeType === 'single_date' && date) {
       setPeriodsLoading(true)
@@ -49,6 +53,36 @@ export default function ExportPage() {
       setAvailablePeriods([])
     }
   }, [date, scopeType, supabase])
+
+  // Load distinct period slots for date-range mode
+  useEffect(() => {
+    if (scopeType === 'date_range' && dateFrom && dateTo) {
+      setRangePeriodLoading(true)
+      supabase
+        .from('periods')
+        .select('id, period_number, start_time, end_time, period_type, subjects(subject_name)')
+        .gte('date', dateFrom)
+        .lte('date', dateTo)
+        .order('period_number')
+        .then(({ data }) => {
+          // Deduplicate by period_number + subject — user picks a slot, not a specific date's period
+          const seen = new Set<string>()
+          const unique: any[] = []
+          for (const p of (data as any[]) || []) {
+            const key = `${p.period_number}::${p.subjects?.subject_name || ''}::${p.start_time}`
+            if (!seen.has(key)) {
+              seen.add(key)
+              unique.push(p)
+            }
+          }
+          setRangePeriods(unique)
+          setRangePeriodLoading(false)
+        })
+    } else {
+      setRangePeriodId('')
+      setRangePeriods([])
+    }
+  }, [dateFrom, dateTo, scopeType, supabase])
 
   const fetchLogs = async () => {
     setLogsLoading(true)
@@ -69,6 +103,8 @@ export default function ExportPage() {
     } else {
       body.dateFrom = dateFrom
       body.dateTo = dateTo
+      // For date-range mode, send period_number + time filter instead of a specific period ID
+      if (rangePeriodId) body.rangePeriodId = rangePeriodId
     }
     if (classId) body.classId = classId
     return body
@@ -77,6 +113,10 @@ export default function ExportPage() {
   const validate = () => {
     if (scopeType === 'date_range' && (!dateFrom || !dateTo)) {
       showToast('Select both a start and end date to continue.', 'error')
+      return false
+    }
+    if (scopeType === 'date_range' && dateFrom && dateTo && dateFrom > dateTo) {
+      showToast('Start date must be before end date.', 'error')
       return false
     }
     return true
@@ -97,11 +137,13 @@ export default function ExportPage() {
         return
       }
       const blob = await res.blob()
-      const filename = periodId
-        ? `attendance-period-${periodId}-${date}.csv`
-        : scopeType === 'single_date'
-        ? `attendance-${date}.csv`
-        : `attendance-${dateFrom}-to-${dateTo}.csv`
+      const selectedPeriod = rangeperiods.find(p => p.id === rangePeriodId)
+      const periodLabel = selectedPeriod
+        ? `_P${selectedPeriod.period_number}${selectedPeriod.subjects?.subject_name ? '_' + selectedPeriod.subjects.subject_name.replace(/\s+/g, '') : ''}`
+        : (periodId ? `_period-${periodId}` : '')
+      const filename = scopeType === 'single_date'
+        ? `attendance-${date}${periodLabel}.csv`
+        : `attendance-${dateFrom}-to-${dateTo}${periodLabel}.csv`
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -226,6 +268,32 @@ export default function ExportPage() {
                 <div className="w-full sm:w-auto">
                   <label className="label">To</label>
                   <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input w-full sm:w-48" />
+                </div>
+                <div className="w-full sm:w-auto">
+                  <label className="label">Period (optional)</label>
+                  <select
+                    value={rangePeriodId}
+                    onChange={(e) => setRangePeriodId(e.target.value ? parseInt(e.target.value) : '')}
+                    disabled={rangePeriodLoading || (!dateFrom || !dateTo)}
+                    className="input w-full sm:w-80"
+                  >
+                    <option value="">All Periods (Entire Range)</option>
+                    {rangeperiods.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        P{p.period_number}: {p.subjects?.subject_name || 'Unassigned'} ({p.start_time?.slice(0, 5)} – {p.end_time?.slice(0, 5)})
+                      </option>
+                    ))}
+                  </select>
+                  {!dateFrom || !dateTo ? (
+                    <p className="text-[11px] text-muted mt-1">Select a date range first to filter by period.</p>
+                  ) : rangeperiods.length === 0 && !rangePeriodLoading ? (
+                    <p className="text-[11px] text-muted mt-1">No periods found in this date range.</p>
+                  ) : rangePeriodId ? (
+                    <p className="text-[11px] text-grove mt-1.5 flex items-center gap-1 font-medium">
+                      <span>✓</span>
+                      <span>Matrix format: Student rows × date columns with Present/Absent counts &amp; % rate.</span>
+                    </p>
+                  ) : null}
                 </div>
               </>
             )}

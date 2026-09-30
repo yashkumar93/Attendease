@@ -75,6 +75,308 @@ function extractSpreadsheetId(val: string): string {
 }
 
 /**
+ * Resolves or creates the tab in a master spreadsheet.
+ * Returns { spreadsheetId, sheetId, tabTitle }.
+ */
+async function resolveTab(
+  sheets: ReturnType<typeof google.sheets>,
+  drive: ReturnType<typeof google.drive>,
+  shareEmail: string | undefined,
+  masterSpreadsheetEnv: string | undefined,
+  rawTitle: string,
+): Promise<{ spreadsheetId: string; sheetId: number; tabTitle: string }> {
+  if (masterSpreadsheetEnv) {
+    const spreadsheetId = extractSpreadsheetId(masterSpreadsheetEnv)
+
+    let meta
+    try {
+      meta = await sheets.spreadsheets.get({ spreadsheetId })
+    } catch (err) {
+      throw new Error(
+        `Failed to access master spreadsheet (${spreadsheetId}): ${googleErrMsg(err)}. ` +
+        'Please ensure the Google Sheet is shared with your service account as Editor.'
+      )
+    }
+
+    const cleanTitle = rawTitle.replace(/[\\/?*[\]:]/g, '-').slice(0, 80).trim()
+    const existingSheets = meta.data.sheets || []
+    const existingTitles = new Set(existingSheets.map((s) => s.properties?.title))
+
+    let tabTitle = cleanTitle || 'Attendance'
+    let counter = 1
+    while (existingTitles.has(tabTitle)) {
+      counter++
+      tabTitle = `${cleanTitle.slice(0, 75)} (${counter})`
+    }
+
+    const addSheetRes = await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [{ addSheet: { properties: { title: tabTitle, gridProperties: { frozenRowCount: 1 } } } }],
+      },
+    })
+    const sheetId = addSheetRes.data.replies?.[0]?.addSheet?.properties?.sheetId!
+
+    // Remove untouched default Sheet1 if it's the only prior sheet
+    if (
+      existingSheets.length === 1 &&
+      existingSheets[0].properties?.title === 'Sheet1' &&
+      existingSheets[0].properties?.sheetId !== undefined
+    ) {
+      try {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: { requests: [{ deleteSheet: { sheetId: existingSheets[0].properties.sheetId } }] },
+        })
+      } catch { /* ignore */ }
+    }
+
+    return { spreadsheetId, sheetId, tabTitle }
+  } else {
+    // Fallback: create a new spreadsheet file
+    let createRes
+    try {
+      createRes = await sheets.spreadsheets.create({
+        requestBody: {
+          properties: { title: rawTitle },
+          sheets: [{ properties: { title: 'Attendance', gridProperties: { frozenRowCount: 1 } } }],
+        },
+      })
+    } catch (err) {
+      throw new Error(
+        `Failed to create spreadsheet: ${googleErrMsg(err)}. ` +
+        'Note: Google Service Accounts have 0 Drive quota. Set GOOGLE_SPREADSHEET_ID in .env.local to use an existing shared sheet.'
+      )
+    }
+
+    const spreadsheetId = createRes.data.spreadsheetId!
+    const sheetId = createRes.data.sheets![0].properties!.sheetId!
+    const tabTitle = 'Attendance'
+
+    if (shareEmail) {
+      try {
+        await drive.permissions.create({
+          fileId: spreadsheetId,
+          requestBody: { type: 'user', role: 'writer', emailAddress: shareEmail },
+          sendNotificationEmail: false,
+        })
+      } catch (shareErr) {
+        console.warn(`[Sheets] Could not share: ${googleErrMsg(shareErr)}`)
+      }
+    }
+
+    return { spreadsheetId, sheetId, tabTitle }
+  }
+}
+
+/**
+ * Creates a PIVOT sheet: rows = students, columns = dates.
+ * Only used for "date range + specific period" exports.
+ *
+ * Layout:
+ *   Roll No | Student Name | Class | Period | 01 Sep | 02 Sep | … | Summary (Present/Total)
+ */
+export async function createPivotAttendanceSheet(
+  title: string,
+  rows: AttendanceRow[],
+): Promise<string> {
+  const { sheets, drive } = getGoogleClients()
+  const shareEmail = process.env.GOOGLE_SHEETS_SHARE_EMAIL
+  const masterSpreadsheetEnv = process.env.GOOGLE_SPREADSHEET_ID
+
+  const { spreadsheetId, sheetId, tabTitle } = await resolveTab(
+    sheets, drive, shareEmail, masterSpreadsheetEnv, title
+  )
+
+  // ── Build pivot matrix ──────────────────────────────────────────────────
+
+  // Collect sorted unique dates (columns)
+  const dateSet = new Set(rows.map((r) => r.date))
+  const dates = Array.from(dateSet).sort()
+
+  // Collect students (keyed by rollNumber)
+  type StudentKey = string
+  const studentMap = new Map<StudentKey, { name: string; roll: string; className: string; periodTime: string }>()
+  for (const r of rows) {
+    if (!studentMap.has(r.rollNumber)) {
+      studentMap.set(r.rollNumber, {
+        name: r.studentName,
+        roll: r.rollNumber,
+        className: r.className,
+        periodTime: r.periodTime,
+      })
+    }
+  }
+
+  // Sort students by roll number (numeric if possible)
+  const students = Array.from(studentMap.values()).sort((a, b) => {
+    const na = parseInt(a.roll, 10)
+    const nb = parseInt(b.roll, 10)
+    return isNaN(na) || isNaN(nb) ? a.roll.localeCompare(b.roll) : na - nb
+  })
+
+  // Build lookup: rollNumber → date → status
+  const statusMap = new Map<string, Map<string, string>>()
+  for (const r of rows) {
+    if (!statusMap.has(r.rollNumber)) statusMap.set(r.rollNumber, new Map())
+    statusMap.get(r.rollNumber)!.set(r.date, r.status)
+  }
+
+  // Format date as "01 Sep" for column headers
+  const fmtDate = (d: string) => {
+    const dt = new Date(d + 'T00:00:00')
+    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+  }
+
+  // Header row: Roll No | Student Name | Class | Period | ...dates... | Present | Absent | %
+  const header = [
+    'Roll No', 'Student Name', 'Class', 'Period',
+    ...dates.map(fmtDate),
+    'Present', 'Absent', 'Attendance %',
+  ]
+
+  // Data rows
+  const dataRows = students.map((s) => {
+    const byDate = statusMap.get(s.roll) || new Map()
+    const dateCells = dates.map((d) => byDate.get(d) || '—')
+    const presentCount = dateCells.filter((c) => c === 'Present').length
+    const absentCount = dateCells.filter((c) => c === 'Absent').length
+    const total = presentCount + absentCount
+    const pct = total > 0 ? `${Math.round((presentCount / total) * 100)}%` : '—'
+    return [s.roll, s.name, s.className, s.periodTime, ...dateCells, presentCount, absentCount, pct]
+  })
+
+  const totalCols = header.length
+  const totalRows = dataRows.length + 1 // +1 for header
+
+  // Write values
+  try {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${tabTitle}'!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [header, ...dataRows] },
+    })
+  } catch (err) {
+    throw new Error(`Failed to write pivot data: ${googleErrMsg(err)}`)
+  }
+
+  // ── Formatting ──────────────────────────────────────────────────────────
+  const dateCols = dates.length
+  const firstDateCol = 4 // 0-indexed: Roll(0) Name(1) Class(2) Period(3)
+  const lastDateCol = firstDateCol + dateCols // exclusive
+
+  const formatRequests: any[] = [
+    // Bold + deep-teal header row
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: totalCols },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: { red: 0.0, green: 0.235, blue: 0.2 }, // #003c33 deep green
+            textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
+            horizontalAlignment: 'CENTER',
+          },
+        },
+        fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+      },
+    },
+    // Freeze header row + first 2 columns (roll + name)
+    {
+      updateSheetProperties: {
+        properties: {
+          sheetId,
+          gridProperties: { frozenRowCount: 1, frozenColumnCount: 2 },
+        },
+        fields: 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount',
+      },
+    },
+    // Alternating row colours for readability
+    {
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols }],
+          booleanRule: {
+            condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=ISEVEN(ROW())' }] },
+            format: { backgroundColor: { red: 0.96, green: 0.97, blue: 0.97 } },
+          },
+        },
+        index: 0,
+      },
+    },
+    // Present cells: pale green (date columns only)
+    {
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: firstDateCol, endColumnIndex: lastDateCol }],
+          booleanRule: {
+            condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Present' }] },
+            format: {
+              backgroundColor: { red: 0.851, green: 0.949, blue: 0.867 },
+              textFormat: { foregroundColor: { red: 0.106, green: 0.471, blue: 0.220 } },
+            },
+          },
+        },
+        index: 1,
+      },
+    },
+    // Absent cells: pale red
+    {
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: firstDateCol, endColumnIndex: lastDateCol }],
+          booleanRule: {
+            condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Absent' }] },
+            format: {
+              backgroundColor: { red: 0.988, green: 0.867, blue: 0.867 },
+              textFormat: { foregroundColor: { red: 0.671, green: 0.102, blue: 0.102 } },
+            },
+          },
+        },
+        index: 2,
+      },
+    },
+    // Centre-align all date cells
+    {
+      repeatCell: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: firstDateCol, endColumnIndex: totalCols },
+        cell: { userEnteredFormat: { horizontalAlignment: 'CENTER' } },
+        fields: 'userEnteredFormat.horizontalAlignment',
+      },
+    },
+    // Auto-resize all columns
+    {
+      autoResizeDimensions: {
+        dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: totalCols },
+      },
+    },
+    // Borders
+    {
+      updateBorders: {
+        range: { sheetId, startRowIndex: 0, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols },
+        top: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+        bottom: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+        left: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+        right: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+        innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+        innerVertical: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+      },
+    },
+  ]
+
+  try {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests: formatRequests },
+    })
+  } catch (err) {
+    throw new Error(`Failed to format pivot sheet: ${googleErrMsg(err)}`)
+  }
+
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetId}`
+}
+
+/**
  * Creates or appends attendance data to a Google Sheet with formatting.
  * If GOOGLE_SPREADSHEET_ID is configured, creates a dedicated tab in that spreadsheet.
  * Otherwise, attempts to create a new spreadsheet file.
@@ -88,10 +390,6 @@ export async function createAttendanceSheet(
   const shareEmail = process.env.GOOGLE_SHEETS_SHARE_EMAIL
   const masterSpreadsheetEnv = process.env.GOOGLE_SPREADSHEET_ID
 
-  let spreadsheetId: string
-  let sheetId: number
-  let tabTitle = 'Attendance'
-
   // Header + data rows
   const header = [
     'Date', 'Class', 'Period Time', 'Period Type',
@@ -103,124 +401,9 @@ export async function createAttendanceSheet(
     r.studentName, r.rollNumber, r.status, r.markedBy, r.remark, r.markedAt,
   ])
 
-  if (masterSpreadsheetEnv) {
-    // ── Master Spreadsheet Mode (Recommended for Service Accounts) ──────────
-    spreadsheetId = extractSpreadsheetId(masterSpreadsheetEnv)
-
-    let meta
-    try {
-      meta = await sheets.spreadsheets.get({ spreadsheetId })
-    } catch (err) {
-      throw new Error(
-        `Failed to access master spreadsheet (${spreadsheetId}): ${googleErrMsg(err)}. ` +
-        'Please ensure the Google Sheet is shared with your service account as Editor.'
-      )
-    }
-
-    // Google Sheets tab names: max 100 chars, cannot contain \ / ? * [ ] :
-    const cleanTitle = title.replace(/[\\/?*[\]:]/g, '-').slice(0, 80).trim()
-    const existingSheets = meta.data.sheets || []
-    const existingTitles = new Set(existingSheets.map((s) => s.properties?.title))
-
-    tabTitle = cleanTitle || 'Attendance'
-    let counter = 1
-    while (existingTitles.has(tabTitle)) {
-      counter++
-      tabTitle = `${cleanTitle.slice(0, 75)} (${counter})`
-    }
-
-    try {
-      const addSheetRes = await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              addSheet: {
-                properties: {
-                  title: tabTitle,
-                  gridProperties: { frozenRowCount: 1 },
-                },
-              },
-            },
-          ],
-        },
-      })
-
-      sheetId = addSheetRes.data.replies?.[0]?.addSheet?.properties?.sheetId!
-
-      // If the spreadsheet only had the default untouched 'Sheet1', remove it
-      if (
-        existingSheets.length === 1 &&
-        existingSheets[0].properties?.title === 'Sheet1' &&
-        existingSheets[0].properties?.sheetId !== undefined
-      ) {
-        try {
-          await sheets.spreadsheets.batchUpdate({
-            spreadsheetId,
-            requestBody: {
-              requests: [
-                {
-                  deleteSheet: {
-                    sheetId: existingSheets[0].properties.sheetId,
-                  },
-                },
-              ],
-            },
-          })
-        } catch {
-          // Ignore if Sheet1 cannot be removed
-        }
-      }
-    } catch (err) {
-      throw new Error(`Failed to create attendance tab in spreadsheet: ${googleErrMsg(err)}`)
-    }
-  } else {
-    // ── Fallback: Create a brand new spreadsheet file ───────────────────────
-    let createRes
-    try {
-      createRes = await sheets.spreadsheets.create({
-        requestBody: {
-          properties: { title },
-          sheets: [
-            {
-              properties: {
-                title: 'Attendance',
-                gridProperties: { frozenRowCount: 1 },
-              },
-            },
-          ],
-        },
-      })
-    } catch (err) {
-      throw new Error(
-        `Failed to create spreadsheet: ${googleErrMsg(err)}. ` +
-        'Note: Google Service Accounts have 0 Drive quota. Set GOOGLE_SPREADSHEET_ID in .env.local to use an existing shared sheet.'
-      )
-    }
-
-    spreadsheetId = createRes.data.spreadsheetId!
-    sheetId = createRes.data.sheets![0].properties!.sheetId!
-    tabTitle = 'Attendance'
-
-    if (shareEmail) {
-      try {
-        await drive.permissions.create({
-          fileId: spreadsheetId,
-          requestBody: {
-            type: 'user',
-            role: 'writer',
-            emailAddress: shareEmail,
-          },
-          sendNotificationEmail: false,
-        })
-      } catch (shareErr) {
-        console.warn(
-          `[Sheets] Could not share sheet with ${shareEmail}: ${googleErrMsg(shareErr)}. ` +
-          'Make sure Google Drive API is enabled for this project.'
-        )
-      }
-    }
-  }
+  const { spreadsheetId, sheetId, tabTitle } = await resolveTab(
+    sheets, drive, shareEmail, masterSpreadsheetEnv, title
+  )
 
   // 2. Write header + data rows
   try {
