@@ -165,18 +165,18 @@ export function Sidebar() {
   const sidebarContent = (
     <>
       {/* Brand header */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/8">
-        <div className="w-7 h-7 rounded bg-grove/90 border border-grove-mid/50 flex items-center justify-center flex-shrink-0">
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
+        <div className="w-7 h-7 rounded-sm bg-white/15 border border-white/20 flex items-center justify-center flex-shrink-0">
           <AnthropicSpikeMark className="w-3.5 h-3.5 text-white" />
         </div>
         <div className="min-w-0">
-          <p className="text-on-dark text-[15px] font-semibold tracking-tight leading-tight">AttendEase</p>
-          <p className="text-on-dark-soft text-[11px] font-medium tracking-wide">Attendance Register</p>
+          <p className="text-white text-[15px] font-semibold tracking-tight leading-tight" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif"}}>AttendEase</p>
+          <p className="text-on-dark-soft text-[11px] font-normal tracking-wide" style={{letterSpacing: '0.12em', textTransform: 'uppercase', fontSize: '10px'}}>Attendance Register</p>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {filteredNavItems.map((item) => {
           if (item.href === '#quick-mark') {
             return (
@@ -186,12 +186,12 @@ export function Sidebar() {
                   setMobileOpen(false)
                   window.dispatchEvent(new CustomEvent('open-quick-mark'))
                 }}
-                className="flex items-center gap-3 px-3 py-2 rounded text-sm font-medium transition-colors duration-120 w-full text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark"
+                className="flex items-center gap-3 px-3 py-2 rounded-sm text-sm font-medium transition-colors duration-120 w-full text-on-dark-soft hover:bg-white/10 hover:text-white"
               >
                 {item.icon}
                 {item.label}
                 <div className="ms-auto">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-grove/25 text-grove-mid font-semibold">Quick</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-white/15 text-white font-semibold tracking-wide" style={{letterSpacing: '0.1em'}}>Quick</span>
                 </div>
               </button>
             )
@@ -202,15 +202,15 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
-              className={`relative flex items-center gap-3 px-3 py-2 rounded text-sm font-medium transition-colors duration-120 active:opacity-75 ${
+              className={`relative flex items-center gap-3 px-3 py-2 rounded-sm text-sm font-medium transition-colors duration-120 active:opacity-75 ${
                 active
-                  ? 'bg-surface-dark-elevated text-on-dark'
-                  : 'text-on-dark-soft hover:bg-surface-dark-elevated/60 hover:text-on-dark'
+                  ? 'bg-white/12 text-white'
+                  : 'text-on-dark-soft hover:bg-white/8 hover:text-white'
               }`}
             >
-              {/* Grove active indicator — a left-edge rule, not a dot */}
+              {/* Coral active indicator — DESIGN.md left-edge rule */}
               {active && (
-                <span className="absolute inset-y-0.5 start-0 w-0.5 rounded-e bg-grove-mid" />
+                <span className="absolute inset-y-0.5 start-0 w-0.5 rounded-e" style={{background: 'var(--coral)'}} />
               )}
               {item.icon}
               {item.label}
@@ -220,8 +220,8 @@ export function Sidebar() {
       </nav>
 
       {/* User profile footer */}
-      <div className="px-3 py-4 border-t border-white/8">
-        <div className="flex items-center gap-1.5 px-2 py-2 rounded-md hover:bg-surface-dark-elevated transition-colors group">
+      <div className="px-3 py-4 border-t border-white/10">
+        <div className="flex items-center gap-1.5 px-2 py-2 rounded-sm hover:bg-white/8 transition-colors group">
           <button
             type="button"
             onClick={() => {
@@ -232,11 +232,11 @@ export function Sidebar() {
             title="View staff profile"
             aria-label="View staff profile"
           >
-            <div className="w-7 h-7 rounded bg-surface-dark-elevated border border-white/10 group-hover:border-grove/50 flex items-center justify-center text-on-dark text-xs font-semibold flex-shrink-0 transition-colors">
+            <div className="w-7 h-7 rounded-sm bg-white/15 border border-white/15 group-hover:border-white/30 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 transition-colors">
               {displayInitials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] text-on-dark font-medium truncate leading-tight group-hover:text-white transition-colors">
+              <p className="text-[13px] text-white font-medium truncate leading-tight group-hover:text-white transition-colors">
                 {displayName}
               </p>
               <p className="text-[11px] text-on-dark-soft truncate leading-tight mt-0.5" title={displayPost}>
@@ -246,7 +246,7 @@ export function Sidebar() {
           </button>
           <button
             onClick={handleLogout}
-            className="p-1.5 rounded text-on-dark-muted hover:text-on-dark-soft hover:bg-white/10 transition-colors flex-shrink-0"
+            className="p-1.5 rounded-sm text-on-dark-muted hover:text-white hover:bg-white/12 transition-colors flex-shrink-0"
             title="Sign out"
             aria-label="Sign out"
           >
@@ -262,11 +262,11 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile top bar */}
-      <div className="lg:hidden fixed top-0 inset-x-0 z-30 h-14 bg-surface-dark border-b border-white/8 flex items-center justify-between px-4">
+      <div className="lg:hidden fixed top-0 inset-x-0 z-30 h-14 border-b border-white/10 flex items-center justify-between px-4" style={{background: 'var(--surface-dark)'}}>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-1.5 rounded text-on-dark-soft hover:text-on-dark hover:bg-surface-dark-elevated transition-colors"
+            className="p-1.5 rounded-sm text-on-dark-soft hover:text-white hover:bg-white/10 transition-colors"
             aria-label="Open navigation"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
@@ -274,15 +274,15 @@ export function Sidebar() {
             </svg>
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-grove/90 flex items-center justify-center">
+            <div className="w-5 h-5 rounded-sm bg-white/15 flex items-center justify-center">
               <AnthropicSpikeMark className="w-2.5 h-2.5 text-white" />
             </div>
-            <span className="text-[15px] font-semibold text-on-dark tracking-tight">AttendEase</span>
+            <span className="text-[15px] font-semibold text-white tracking-tight" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif"}}>AttendEase</span>
           </div>
         </div>
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-quick-mark'))}
-          className="text-xs px-2.5 py-1 rounded bg-surface-dark-elevated text-on-dark-soft font-medium border border-white/8 active:scale-95 transition-transform"
+          className="text-xs px-3 py-1.5 rounded-full bg-white/12 text-white font-medium border border-white/15 active:scale-95 transition-transform"
         >
           Quick mark
         </button>
@@ -298,9 +298,10 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 start-0 z-40 w-64 bg-surface-dark border-e border-white/8 flex flex-col transition-transform duration-300 ${
+        className={`fixed lg:static inset-y-0 start-0 z-40 w-64 border-e border-white/10 flex flex-col transition-transform duration-300 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
+        style={{background: 'var(--surface-dark)'}}
       >
         {sidebarContent}
       </aside>

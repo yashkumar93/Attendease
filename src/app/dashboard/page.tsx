@@ -100,15 +100,15 @@ export default async function DashboardPage() {
   return (
     <div className="animate-fade-in space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-hairline">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-6 border-b border-hairline">
         <div>
-          <p className="text-xs font-medium text-muted mb-2">
+          <p className="text-xs font-medium text-muted mb-2" style={{letterSpacing: '0.18em', textTransform: 'uppercase', fontFamily: "'DM Mono', monospace"}}>
             {isAdmin ? 'Administration' : 'Faculty'}
           </p>
-          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          <h1 className="text-[32px] font-semibold text-ink tracking-tight leading-none" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif", letterSpacing: '-0.03em'}}>
             Welcome back, {p.full_name}
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-2">
             {isAdmin
               ? "Here is an overview of today's academic periods and attendance activity."
               : "Here is today's academic periods and attendance overview."}
@@ -127,17 +127,17 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      {/* Stats — ledger row: plain numbers, rules above/below, not SaaS cards */}
+      {/* Stats — white canvas, hairline borders, no color accent on border-start */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 border border-hairline rounded-lg overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-hairline stagger-children">
         {stats
           .filter((s) => s.show)
           .map((stat) => (
-            <div key={stat.label} className="px-6 py-5 bg-canvas">
-              <p className="text-xs font-medium text-muted mb-2">{stat.label}</p>
-              <p className="font-mono text-4xl font-medium text-ink tracking-tight">
+            <div key={stat.label} className="px-6 py-6 bg-canvas">
+              <p className="text-[10px] font-medium text-muted mb-2" style={{letterSpacing: '0.22em', textTransform: 'uppercase', fontFamily: "'DM Mono', monospace"}}>{stat.label}</p>
+              <p className="font-mono text-4xl font-medium text-ink tracking-tight" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif", letterSpacing: '-0.04em'}}>
                 {stat.value}
               </p>
-              <p className="text-xs text-muted-soft mt-2">{stat.badge}</p>
+              <p className="text-xs text-muted mt-2" style={{letterSpacing: '0.08em'}}>{stat.badge}</p>
             </div>
           ))}
       </div>
@@ -146,8 +146,8 @@ export default async function DashboardPage() {
       {isAdmin && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-ink">Quick actions</h2>
-            <p className="text-xs text-muted">Daily workflows</p>
+            <h2 className="text-base font-semibold text-ink" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif"}}>Quick actions</h2>
+            <p className="text-xs text-muted" style={{letterSpacing: '0.1em'}}>Daily workflows</p>
           </div>
 
           <div className="border border-hairline rounded-lg overflow-hidden divide-y divide-hairline">
@@ -156,7 +156,7 @@ export default async function DashboardPage() {
               href="/dashboard/admin/attendance"
               className="flex items-center gap-4 px-5 py-4 bg-canvas hover:bg-surface-soft transition-colors group"
             >
-              <div className="w-8 h-8 rounded bg-surface-card border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
+              <div className="w-8 h-8 rounded-sm bg-canvas border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -165,7 +165,7 @@ export default async function DashboardPage() {
                 <p className="text-sm font-medium text-ink">Mark attendance</p>
                 <p className="text-xs text-muted mt-0.5">Fast default-present verification across all active periods.</p>
               </div>
-              <svg className="w-4 h-4 text-muted-soft flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="w-4 h-4 text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
             </a>
@@ -174,7 +174,7 @@ export default async function DashboardPage() {
               href="/dashboard/export"
               className="flex items-center gap-4 px-5 py-4 bg-canvas hover:bg-surface-soft transition-colors group"
             >
-              <div className="w-8 h-8 rounded bg-surface-card border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
+              <div className="w-8 h-8 rounded-sm bg-canvas border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                 </svg>
@@ -183,7 +183,7 @@ export default async function DashboardPage() {
                 <p className="text-sm font-medium text-ink">Export to Sheets</p>
                 <p className="text-xs text-muted mt-0.5">Synchronize or download attendance reports directly to CSV or Google Sheets.</p>
               </div>
-              <svg className="w-4 h-4 text-muted-soft flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="w-4 h-4 text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
             </a>
@@ -195,14 +195,14 @@ export default async function DashboardPage() {
       {!isAdmin && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-ink">Quick actions</h2>
+            <h2 className="text-base font-semibold text-ink" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif"}}>Quick actions</h2>
           </div>
           <div className="border border-hairline rounded-lg overflow-hidden divide-y divide-hairline">
             <a
               href="/dashboard/instructor/attendance"
               className="flex items-center gap-4 px-5 py-4 bg-canvas hover:bg-surface-soft transition-colors group"
             >
-              <div className="w-8 h-8 rounded bg-surface-card border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
+              <div className="w-8 h-8 rounded-sm bg-canvas border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -211,7 +211,7 @@ export default async function DashboardPage() {
                 <p className="text-sm font-medium text-ink">Attendance overview</p>
                 <p className="text-xs text-muted mt-0.5">View, take, and manage attendance for all classes and academic periods.</p>
               </div>
-              <svg className="w-4 h-4 text-muted-soft flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="w-4 h-4 text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
             </a>
@@ -220,7 +220,7 @@ export default async function DashboardPage() {
               href="/dashboard/export"
               className="flex items-center gap-4 px-5 py-4 bg-canvas hover:bg-surface-soft transition-colors group"
             >
-              <div className="w-8 h-8 rounded bg-surface-card border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
+              <div className="w-8 h-8 rounded-sm bg-canvas border border-hairline flex items-center justify-center text-muted group-hover:text-ink transition-colors flex-shrink-0">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                 </svg>
@@ -229,7 +229,7 @@ export default async function DashboardPage() {
                 <p className="text-sm font-medium text-ink">Export attendance</p>
                 <p className="text-xs text-muted mt-0.5">Download attendance records as CSV or export live to Google Sheets.</p>
               </div>
-              <svg className="w-4 h-4 text-muted-soft flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="w-4 h-4 text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
             </a>

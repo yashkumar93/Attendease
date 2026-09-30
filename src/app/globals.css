@@ -1,68 +1,84 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 :root {
   /* ============================================================
-     Attendease — Academic Register Design System
-     Palette: aged paper canvas, deep forest ink, grove green accent
-     Type: DM Sans (body/UI) + DM Mono (data cells only)
+     AttendEase — Cohere-system design tokens
+     DESIGN.md reference: white canvas, near-black primary, deep-green sidebar
+     Type: Space Grotesk display / Inter body / DM Mono data
      ============================================================ */
 
-  /* Base surfaces — warm off-white, like aged examination paper */
-  --canvas: #F7F4EF;
-  --surface-soft: #EFF0E8;
-  --surface-card: #ECEADF;
-  --surface-cream-strong: #E3E0D2;
-  --surface-rule: #D4CEBD;
+  /* Base surfaces */
+  --canvas: #ffffff;
+  --surface-soft: #eeece7;          /* soft-stone */
+  --surface-card: #ffffff;
+  --surface-cream-strong: #eeece7;
+  --surface-rule: #d9d9dd;
 
-  /* Dark sidebar — deep forest ink */
-  --surface-dark: #111A0E;
-  --surface-dark-elevated: #1C2A17;
-  --surface-dark-soft: #172313;
+  /* Sidebar / dark product band — deep enterprise green */
+  --surface-dark: #003c33;
+  --surface-dark-elevated: #004d42;
+  --surface-dark-soft: #002e27;
 
-  /* Hairlines — warm ledger rules */
-  --hairline: #D1CABF;
-  --hairline-soft: #DDD8CC;
+  /* Hairlines */
+  --hairline: #e5e7eb;
+  --hairline-soft: #f2f2f2;
 
-  /* Grove — the single accent. Used only on: primary CTA, active nav, present badge, live indicator */
-  --grove: #2D5016;
-  --grove-mid: #3D6B1F;
-  --grove-hover: #4A7A28;
-  --grove-pale: #EDF3E8;
-  --grove-light: #F2F7EE;
+  /* Primary — near-black (pill CTA, nav active, headings) */
+  --primary-color: #17171c;
+  --primary-hover: #2a2a30;
 
-  /* Ink — near-black with a faint forest cast, not pure black */
-  --ink: #1A2016;
-  --body-strong: #2C3526;
-  --body: #3F4A38;
-  --muted: #6B7563;
-  --muted-soft: #8E9886;
+  /* Coral — editorial accent: chips, badges, warm markers */
+  --coral: #ff7759;
+  --coral-soft: #ffad9b;
+  --coral-pale: #fff1ee;
+
+  /* Action blue — links, pagination, secondary emphasis */
+  --action-blue: #1863dc;
+  --focus-blue: #4c6ee6;
+
+  /* Pale washes */
+  --pale-green: #edfce9;
+  --pale-blue: #f1f5ff;
+  --soft-stone: #eeece7;
+
+  /* Text */
+  --ink: #17171c;
+  --body-strong: #212121;
+  --body: #212121;
+  --muted: #93939f;
+  --muted-soft: #75758a;
 
   /* On-dark text */
-  --on-primary: #FFFFFF;
-  --on-dark: #E8EBE3;
-  --on-dark-soft: #8A9882;
-  --on-dark-muted: #5A6855;
+  --on-primary: #ffffff;
+  --on-dark: #ffffff;
+  --on-dark-soft: #a8c4b8;
+  --on-dark-muted: #6a9a88;
 
-  /* Semantic — using grove for success to reinforce the single-accent discipline */
-  --success: #2D5016;
-  --success-light: #EDF3E8;
-  --success-foreground: #2D5016;
+  /* Semantic */
+  --success: #1d3a2f;
+  --success-light: #edfce9;
+  --success-foreground: #1d3a2f;
   --warning: #7A5C00;
   --warning-light: #FEF9E6;
   --warning-foreground: #7A5C00;
-  --danger: #8B2020;
-  --danger-light: #FAEDED;
-  --danger-foreground: #8B2020;
-  --info: #1A3D6E;
-  --info-light: #EBF1FA;
+  --danger: #b30000;
+  --danger-light: #fff0f0;
+  --danger-foreground: #b30000;
+  --info: #1863dc;
+  --info-light: #f1f5ff;
 
-  /* Legacy compatibility aliases */
-  --primary: var(--grove);
-  --primary-active: var(--grove-hover);
-  --primary-disabled: var(--surface-cream-strong);
-  --primary-light: var(--grove-pale);
-  --accent-teal: #3D6B1F;
+  /* Legacy aliases — keep existing TSX compiling without changes */
+  --grove: #17171c;
+  --grove-mid: #2a2a30;
+  --grove-hover: #2a2a30;
+  --grove-pale: #eeece7;
+  --grove-light: #f8f8f8;
+  --primary: var(--primary-color);
+  --primary-active: var(--primary-hover);
+  --primary-disabled: #d9d9dd;
+  --primary-light: var(--soft-stone);
+  --accent-teal: #1d3a2f;
   --accent-amber: #7A5C00;
 
   --background: var(--canvas);
@@ -75,20 +91,20 @@
   --sidebar-text-active: var(--on-dark);
   --sidebar-accent: var(--surface-dark-elevated);
 
-  /* Radius — reserved for buttons, badges, inputs only. Containers use rules. */
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-  --radius-pill: 9999px;
+  /* Radius scale — DESIGN.md */
+  --radius-xs: 4px;      /* small images, search, article thumbnails */
+  --radius-sm: 8px;      /* chips, cards, small media */
+  --radius: 8px;
+  --radius-md: 8px;
+  --radius-lg: 22px;     /* signature media-card radius */
+  --radius-xl: 30px;     /* research/topic filter pills */
+  --radius-pill: 32px;   /* primary CTA buttons */
 
-  /* Shadows — minimal, prefer rules over shadow depth */
-  --shadow-sm: 0 1px 2px 0 rgba(26, 32, 22, 0.05);
-  --shadow: 0 1px 3px 0 rgba(26, 32, 22, 0.07);
-  --shadow-md: 0 2px 6px -1px rgba(26, 32, 22, 0.08);
-  --shadow-lg: 0 8px 24px -3px rgba(26, 32, 22, 0.12);
+  /* Shadows — flat; depth from surface contrast and thin borders */
+  --shadow-sm: 0 1px 2px 0 rgba(23, 23, 28, 0.05);
+  --shadow: 0 1px 3px 0 rgba(23, 23, 28, 0.07);
+  --shadow-md: 0 2px 6px -1px rgba(23, 23, 28, 0.08);
+  --shadow-lg: 0 8px 24px -3px rgba(23, 23, 28, 0.10);
 }
 
 @theme inline {
@@ -144,14 +160,15 @@
   --color-sidebar-text-active: var(--sidebar-text-active);
   --color-sidebar-accent: var(--sidebar-accent);
 
-  /* DM Sans for all prose and UI; DM Mono strictly for data cells */
-  --font-serif: 'DM Sans', system-ui, sans-serif;
-  --font-sans: 'DM Sans', system-ui, sans-serif;
+  /* Space Grotesk display / Inter body / DM Mono data */
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-serif: 'Space Grotesk', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'DM Mono', 'Courier New', monospace;
 }
 
 /* ============================================================
-   Base styles & Typography
+   Base styles & Typography — DESIGN.md Cohere system
    ============================================================ */
 
 * {
@@ -161,49 +178,49 @@
 body {
   background-color: var(--canvas);
   color: var(--ink);
-  font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 15px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* DM Sans carries all hierarchy through weight and size — no decorative serif */
+/* Space Grotesk for all display headings — tight tracking, carved feel */
 h1, h2, h3, h4 {
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 500;
   color: var(--ink);
   line-height: 1.2;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 h1 {
-  font-size: 1.875rem;
+  font-size: 2rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  letter-spacing: -0.03em;
+  line-height: 1.0;
 }
 
 h2 {
-  font-size: 1.375rem;
+  font-size: 1.5rem;
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.025em;
 }
 
 h3 {
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
   font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-/* Preserve font-serif class usage in existing TSX without breaking layout */
-.font-serif {
-  font-family: 'DM Sans', system-ui, sans-serif;
-  font-weight: 600;
   letter-spacing: -0.015em;
 }
 
-/* DM Mono: strictly for numeric data, roll numbers, timestamps */
+/* Preserve font-serif class usage in existing TSX */
+.font-serif {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* DM Mono: roll numbers, timestamps, data cells */
 code, pre, .font-mono {
   font-family: 'DM Mono', 'Courier New', monospace;
   font-size: 0.875em;
@@ -350,28 +367,46 @@ code, pre, .font-mono {
    Card borders are thin and warm; radius kept minimal
    ============================================================ */
 
+/* Cards — DESIGN.md: white canvas, hairline-soft border, 8px radius
+   Media cards get 22px radius (--radius-lg). No drop shadows on standard cards. */
 .card {
-  background-color: var(--surface-card);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  background-color: var(--canvas);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-sm);
   transition: border-color 0.15s ease;
 }
 
 .card:hover {
-  border-color: #BEB6A4;
+  border-color: var(--hairline);
+}
+
+/* Media / hero card — 22px radius (DESIGN.md signature) */
+.card-media {
+  background-color: var(--canvas);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 .card-canvas {
   background-color: var(--canvas);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-sm);
 }
 
+/* Dark product band — deep green per DESIGN.md */
 .card-dark {
   background-color: var(--surface-dark);
   color: var(--on-dark);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+}
+
+/* Soft stone product card — warm neutral surface */
+.card-stone {
+  background-color: var(--soft-stone);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-sm);
 }
 
 .card-interactive {
@@ -380,7 +415,7 @@ code, pre, .font-mono {
 
 .card-interactive:hover {
   transform: translateY(-1px);
-  border-color: #BEB6A4;
+  border-color: var(--hairline);
 }
 
 .card-interactive:active {
@@ -434,60 +469,78 @@ code, pre, .font-mono {
 }
 
 /* ============================================================
-   Status Badges
+   Status Badges — DESIGN.md: coral for editorial, slate outline for inactive
    ============================================================ */
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.1875rem 0.5rem;
+  padding: 0.1875rem 0.625rem;
   border-radius: var(--radius-xs);
   font-size: 0.75rem;
   font-weight: 500;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   line-height: 1.25rem;
-  letter-spacing: 0;
+  letter-spacing: 0.01em;
   transition: all 0.12s ease;
 }
 
-/* Present: grove green — reinforces single accent discipline */
+/* Present: pale green wash — clean, institutional */
 .badge-present {
-  background: var(--grove-pale);
-  color: var(--grove);
-  border: 1px solid rgba(45, 80, 22, 0.25);
+  background: var(--pale-green);
+  color: var(--success);
+  border: 1px solid rgba(29, 58, 47, 0.2);
 }
 
+/* Absent: soft danger */
 .badge-absent {
   background: var(--danger-light);
   color: var(--danger-foreground);
-  border: 1px solid rgba(139, 32, 32, 0.2);
+  border: 1px solid rgba(179, 0, 0, 0.18);
 }
 
+/* Active: pale green */
 .badge-active {
-  background: var(--grove-pale);
-  color: var(--grove);
-  border: 1px solid rgba(45, 80, 22, 0.2);
+  background: var(--pale-green);
+  color: var(--success);
+  border: 1px solid rgba(29, 58, 47, 0.18);
 }
 
+/* Inactive: muted slate */
 .badge-inactive {
-  background: var(--surface-cream-strong);
+  background: var(--soft-stone);
   color: var(--muted);
   border: 1px solid var(--hairline);
 }
 
+/* Coral chip — editorial taxonomy, DESIGN.md blog-filter-chip style */
 .badge-coral {
-  background: var(--grove);
-  color: #FFFFFF;
+  background: var(--coral);
+  color: #ffffff;
   font-size: 0.6875rem;
   font-weight: 600;
+  border-radius: var(--radius-xs);
 }
 
+/* Coral outline chip */
+.chip-coral {
+  background: transparent;
+  color: var(--coral);
+  border: 1px solid var(--coral);
+  border-radius: var(--radius-xl);
+  padding: 0.25rem 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Pill outline — filter/taxonomy chip (DESIGN.md research filter) */
 .badge-pill {
-  background: var(--surface-card);
+  background: transparent;
   color: var(--ink);
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-xl);
   font-size: 0.75rem;
   font-weight: 500;
 }
@@ -496,6 +549,7 @@ code, pre, .font-mono {
    Data Tables — ledger rows
    ============================================================ */
 
+/* Data Tables — DESIGN.md research-table: rule-separated rows, soft-stone header */
 .data-table {
   width: 100%;
   border-collapse: separate;
@@ -503,11 +557,12 @@ code, pre, .font-mono {
 }
 
 .data-table th {
-  background: var(--surface-soft);
+  background: var(--soft-stone);
   color: var(--muted);
+  font-family: 'DM Mono', monospace;
   font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: 400;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 0.625rem 1rem;
   text-align: start;
@@ -518,15 +573,15 @@ code, pre, .font-mono {
 }
 
 .data-table th:first-child {
-  border-start-start-radius: var(--radius-lg);
+  border-start-start-radius: var(--radius-sm);
 }
 
 .data-table th:last-child {
-  border-start-end-radius: var(--radius-lg);
+  border-start-end-radius: var(--radius-sm);
 }
 
 .data-table td {
-  padding: 0.6875rem 1rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--hairline-soft);
   font-size: 0.875rem;
   color: var(--ink);
@@ -534,11 +589,12 @@ code, pre, .font-mono {
 }
 
 .data-table tbody tr {
+  background: var(--canvas);
   transition: background-color 0.1s ease;
 }
 
 .data-table tbody tr:hover {
-  background-color: var(--surface-soft);
+  background-color: var(--soft-stone);
 }
 
 .data-table tbody tr:last-child td {
@@ -590,17 +646,18 @@ code, pre, .font-mono {
    Buttons
    ============================================================ */
 
+/* Buttons — DESIGN.md: near-black pill primary, text-link secondary, outlined pill filter */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.4375rem;
-  padding: 0.5rem 0.9375rem;
-  border-radius: var(--radius-md);
+  padding: 0.5rem 1.25rem;
+  border-radius: var(--radius-pill);
   font-size: 0.875rem;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   font-weight: 500;
-  line-height: 1.25rem;
+  line-height: 1.71;
   cursor: pointer;
   transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.1s var(--ease-out-natural);
   border: 1px solid transparent;
@@ -620,51 +677,71 @@ code, pre, .font-mono {
 }
 
 .btn:focus-visible {
-  box-shadow: 0 0 0 3px rgba(45, 80, 22, 0.2);
+  box-shadow: 0 0 0 3px rgba(76, 110, 230, 0.35);
 }
 
-/* Grove primary CTA — the single accent color in action */
+/* Primary CTA — near-black pill (DESIGN.md: "near-black or white pill CTA") */
 .btn-primary {
-  background-color: var(--grove);
-  color: #FFFFFF;
-  border-color: var(--grove);
+  background-color: var(--primary-color);
+  color: #ffffff;
+  border-color: var(--primary-color);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: var(--grove-hover);
-  border-color: var(--grove-hover);
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
 }
 
-/* Canvas secondary — legible against both canvas and card backgrounds */
+/* Secondary — text-only, no fill (DESIGN.md: "underlined text links") */
 .btn-secondary {
-  background-color: var(--canvas);
+  background-color: transparent;
   color: var(--ink);
-  border: 1px solid var(--hairline);
+  border-color: transparent;
+  padding-inline: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  border-radius: 0;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: var(--surface-card);
-  border-color: #BEB6A4;
+  color: var(--muted);
 }
 
+/* Secondary on dark — for sidebar/dark band contexts */
 .btn-secondary-on-dark {
   background-color: var(--surface-dark-elevated);
   color: var(--on-dark);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-pill);
 }
 
 .btn-secondary-on-dark:hover:not(:disabled) {
-  background-color: #243319;
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Outlined pill — filter/research chips (DESIGN.md: button-pill-outline) */
+.btn-pill-outline {
+  background-color: transparent;
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xl);
+  padding: 0.375rem 0.875rem;
+  font-size: 0.8125rem;
+}
+
+.btn-pill-outline:hover:not(:disabled) {
+  border-color: var(--muted);
 }
 
 .btn-danger {
   background-color: var(--danger);
   color: white;
   border-color: var(--danger);
+  border-radius: var(--radius-pill);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background-color: #6F1A1A;
+  background-color: #8b0000;
 }
 
 .btn-ghost {
@@ -674,48 +751,49 @@ code, pre, .font-mono {
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background-color: var(--surface-card);
+  background-color: var(--soft-stone);
   color: var(--ink);
 }
 
 .btn-success {
-  background-color: var(--grove);
+  background-color: var(--success);
   color: white;
-  border-color: var(--grove);
+  border-color: var(--success);
+  border-radius: var(--radius-pill);
 }
 
 .btn-success:hover:not(:disabled) {
-  background-color: var(--grove-hover);
+  background-color: #152b22;
 }
 
 .btn-sm {
-  padding: 0.25rem 0.5625rem;
+  padding: 0.25rem 0.75rem;
   font-size: 0.8125rem;
-  border-radius: var(--radius-sm);
 }
 
 .btn-lg {
-  padding: 0.6875rem 1.375rem;
+  padding: 0.75rem 1.5rem;
   font-size: 0.9375rem;
-  border-radius: var(--radius-md);
 }
 
 .btn-icon {
   padding: 0.5rem;
   width: 2.25rem;
   height: 2.25rem;
+  border-radius: var(--radius-sm);
 }
 
+/* Text link — action blue per DESIGN.md */
 .text-link {
-  color: var(--grove);
+  color: var(--action-blue);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 400;
   transition: color 0.12s ease;
 }
 
 .text-link:hover {
   text-decoration: underline;
-  color: var(--grove-hover);
+  text-underline-offset: 3px;
 }
 
 /* ============================================================

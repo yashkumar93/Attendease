@@ -60,24 +60,24 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{fontFamily: "'DM Sans', system-ui, sans-serif"}}>
-      {/* Left accent column — forest green, like a ledger margin rule */}
-      <div className="hidden lg:flex w-72 xl:w-80 flex-col justify-between bg-surface-dark border-e border-white/8 p-8 flex-shrink-0">
+    <div className="min-h-screen flex" style={{fontFamily: "'Inter', system-ui, sans-serif"}}>
+      {/* Left accent column — deep enterprise green per DESIGN.md */}
+      <div className="hidden lg:flex w-72 xl:w-80 flex-col justify-between p-8 flex-shrink-0" style={{background: 'var(--surface-dark)', borderRight: '1px solid rgba(255,255,255,0.08)'}}>
         <div>
           <div className="flex items-center gap-2.5 mb-16">
-            <div className="w-7 h-7 rounded bg-grove/90 border border-grove-mid/40 flex items-center justify-center flex-shrink-0">
+            <div className="w-7 h-7 rounded-sm bg-white/15 border border-white/20 flex items-center justify-center flex-shrink-0">
               <AnthropicSpikeMark className="w-3.5 h-3.5 text-white" />
             </div>
-            <span className="text-on-dark text-[15px] font-semibold tracking-tight">AttendEase</span>
+            <span className="text-white text-[15px] font-semibold tracking-tight" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif"}}>AttendEase</span>
           </div>
-          <p className="text-on-dark text-2xl font-semibold leading-snug tracking-tight max-w-[220px]">
+          <p className="text-white text-2xl font-semibold leading-snug tracking-tight max-w-[220px]" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif", letterSpacing: '-0.02em'}}>
             Academic attendance, simply managed.
           </p>
           <p className="text-on-dark-soft text-sm mt-4 leading-relaxed">
             Roster verification, period scheduling, and attendance export — in one institutional register.
           </p>
         </div>
-        <p className="text-on-dark-muted text-xs">
+        <p className="text-on-dark-muted text-xs" style={{letterSpacing: '0.1em', textTransform: 'uppercase'}}>
           Authorised personnel only
         </p>
       </div>
@@ -87,13 +87,13 @@ export default function LoginPage() {
         <div className="w-full max-w-sm animate-fade-in-up">
           {/* Mobile-only brand mark */}
           <div className="flex items-center gap-2 mb-8 lg:hidden">
-            <div className="w-6 h-6 rounded bg-grove/90 flex items-center justify-center">
+            <div className="w-6 h-6 rounded-sm bg-white/15 flex items-center justify-center" style={{background: 'var(--surface-dark)'}}>
               <AnthropicSpikeMark className="w-3 h-3 text-white" />
             </div>
-            <span className="text-ink text-[15px] font-semibold tracking-tight">AttendEase</span>
+            <span className="text-ink text-[15px] font-semibold tracking-tight" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif"}}>AttendEase</span>
           </div>
 
-          <h1 className="text-ink text-[22px] font-semibold tracking-tight mb-1">Sign in</h1>
+          <h1 className="text-ink text-[28px] font-semibold tracking-tight mb-1" style={{fontFamily: "'Space Grotesk', system-ui, sans-serif", letterSpacing: '-0.03em'}}>Sign in</h1>
           <p className="text-muted text-sm mb-7">Enter your institutional credentials to continue.</p>
 
           {/* Timeout notification */}
