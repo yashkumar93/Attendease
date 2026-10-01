@@ -42,16 +42,16 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { date, dateFrom, dateTo, classId, periodId, rangePeriodId, format = 'csv' } = body
 
-    // ── Bulk export: one sub-sheet per period for a single date ──────────
+    // ── Bulk export: one sub-sheet per period (single date OR date range) ──
     if (format === 'sheets_bulk') {
-      if (!date) {
+      if (!date && !(dateFrom && dateTo)) {
         return NextResponse.json(
-          { error: 'A date is required for bulk period export.' },
+          { error: 'A date or date range is required for bulk period export.' },
           { status: 400 }
         )
       }
 
-      // Fetch all attendance for the date (with period metadata)
+      // Fetch all attendance for the date/range (with period + subject metadata)
       let bulkQuery = supabase
         .from('attendance')
         .select(`
@@ -63,7 +63,12 @@ export async function POST(request: Request) {
             subjects(subject_name)
           )
         `)
-        .eq('periods.date', date)
+
+      if (dateFrom && dateTo) {
+        bulkQuery = bulkQuery.gte('periods.date', dateFrom).lte('periods.date', dateTo)
+      } else {
+        bulkQuery = bulkQuery.eq('periods.date', date)
+      }
 
       if (classId) {
         bulkQuery = bulkQuery.eq('periods.class_id', classId)
@@ -77,7 +82,7 @@ export async function POST(request: Request) {
 
       if (!records || records.length === 0) {
         return NextResponse.json(
-          { error: 'No attendance records found for the selected date' },
+          { error: 'No attendance records found for the selected scope' },
           { status: 404 }
         )
       }
@@ -97,8 +102,13 @@ export async function POST(request: Request) {
         }
       }
 
-      // Group records by period (period_number + start_time = unique slot)
-      const periodGroupMap = new Map<string, { tabTitle: string; periodNumber: number; rows: AttendanceRow[] }>()
+      // Group records by date + period (date::period_number::start_time = unique slot)
+      const periodGroupMap = new Map<string, {
+        tabTitle: string;
+        sortDate: string;
+        periodNumber: number;
+        rows: AttendanceRow[];
+      }>()
 
       for (const r of records as any[]) {
         const period = r.periods as any
@@ -106,21 +116,23 @@ export async function POST(request: Request) {
         const cls = period?.classes as any
         const subjectName = period?.subjects?.subject_name || ''
         const markerName = markerMap.get(r.marked_by) || (r.marked_by ? 'Staff' : 'System')
+        const pDate = period?.date || ''
 
-        const periodKey = `${period.period_number}::${period.start_time}`
+        const periodKey = `${pDate}::${period.period_number}::${period.start_time}`
 
         if (!periodGroupMap.has(periodKey)) {
           const subLabel = subjectName ? ` ${subjectName}` : ''
-          const tabTitle = `${date} – P${period.period_number}${subLabel} (${period.start_time?.slice(0, 5)}–${period.end_time?.slice(0, 5)})`
+          const tabTitle = `${pDate} – P${period.period_number}${subLabel} (${period.start_time?.slice(0, 5)}–${period.end_time?.slice(0, 5)})`
           periodGroupMap.set(periodKey, {
             tabTitle,
+            sortDate: pDate,
             periodNumber: period.period_number,
             rows: [],
           })
         }
 
         periodGroupMap.get(periodKey)!.rows.push({
-          date: period?.date || '',
+          date: pDate,
           className: cls?.class_name || '',
           periodTime: `${period?.start_time?.slice(0, 5)} - ${period?.end_time?.slice(0, 5)}`,
           periodType: period?.period_type || '',
@@ -133,14 +145,17 @@ export async function POST(request: Request) {
         })
       }
 
-      // Sort groups by period_number
+      // Sort: date ascending first, then period_number ascending within each date
       const periodGroups = Array.from(periodGroupMap.values())
-        .sort((a, b) => a.periodNumber - b.periodNumber)
+        .sort((a, b) => {
+          const dateCmp = a.sortDate.localeCompare(b.sortDate)
+          return dateCmp !== 0 ? dateCmp : a.periodNumber - b.periodNumber
+        })
         .map(({ tabTitle, rows }) => ({ tabTitle, rows }))
 
       if (periodGroups.length === 0) {
         return NextResponse.json(
-          { error: 'No period groups found for the selected date.' },
+          { error: 'No period groups found for the selected scope.' },
           { status: 404 }
         )
       }
@@ -157,7 +172,10 @@ export async function POST(request: Request) {
       }
 
       // Log the export
-      const scopeDesc = `${date} – All Periods (${periodGroups.length} sheets)`
+      const scopeLabel = dateFrom && dateTo
+        ? `${dateFrom} to ${dateTo}`
+        : date
+      const scopeDesc = `${scopeLabel} – All Periods (${periodGroups.length} sheets)`
       const { error: logErr } = await supabase.from('export_logs').insert({
         scope_description: scopeDesc,
         google_sheet_url: sheetUrl,

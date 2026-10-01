@@ -186,13 +186,27 @@ export default function ExportPage() {
   }
 
   const handleBulkSheets = async () => {
-    if (!date) {
+    if (scopeType === 'single_date' && !date) {
       showToast('Select a date to bulk-export all periods.', 'error')
+      return
+    }
+    if (scopeType === 'date_range' && (!dateFrom || !dateTo)) {
+      showToast('Select both a start and end date to continue.', 'error')
+      return
+    }
+    if (scopeType === 'date_range' && dateFrom && dateTo && dateFrom > dateTo) {
+      showToast('Start date must be before end date.', 'error')
       return
     }
     setLoading('sheets_bulk')
     try {
-      const body: Record<string, unknown> = { date, format: 'sheets_bulk' }
+      const body: Record<string, unknown> = { format: 'sheets_bulk' }
+      if (scopeType === 'single_date') {
+        body.date = date
+      } else {
+        body.dateFrom = dateFrom
+        body.dateTo = dateTo
+      }
       if (classId) body.classId = classId
       const res = await fetch('/api/export', {
         method: 'POST',
@@ -371,8 +385,8 @@ export default function ExportPage() {
               )}
             </button>
 
-            {/* Bulk export: one sub-sheet per period (single-date mode only) */}
-            {scopeType === 'single_date' && !periodId && (
+            {/* Bulk export: one sub-sheet per period per date */}
+            {((scopeType === 'single_date' && !periodId) || (scopeType === 'date_range' && !rangePeriodId)) && (
               <button
                 id="export-bulk-sheets-btn"
                 onClick={handleBulkSheets}
@@ -424,14 +438,14 @@ export default function ExportPage() {
             </button>
           </div>
 
-          {/* Bulk export info callout — only visible in single-date + all-periods mode */}
-          {scopeType === 'single_date' && !periodId && (
+          {/* Bulk export info callout */}
+          {((scopeType === 'single_date' && !periodId) || (scopeType === 'date_range' && !rangePeriodId)) && (
             <div className="rounded-lg border border-hairline bg-surface-soft p-4 text-xs text-muted leading-relaxed flex items-start gap-2.5">
               <svg className="w-4 h-4 text-grove mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-1.007.662-1.862 1.574-2.147" />
               </svg>
               <div>
-                <strong className="text-ink">Bulk Export All Periods</strong> creates one sub-sheet per period for the selected date — up to 7 sheets in a single click, each named like <code className="text-[10px] bg-surface-card px-1 py-0.5 rounded font-mono">2026-10-01 – P1 Maths (09:00–09:45)</code>.
+                <strong className="text-ink">Bulk Export All Periods</strong> creates one sub-sheet per period {scopeType === 'date_range' ? 'for every date in the range' : 'for the selected date'} — each named like <code className="text-[10px] bg-surface-card px-1 py-0.5 rounded font-mono">2026-10-01 – P1 Maths (09:00–09:45)</code>. {scopeType === 'date_range' && 'Sheets are ordered by date, then period number.'}
               </div>
             </div>
           )}
