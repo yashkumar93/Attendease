@@ -513,3 +513,209 @@ export async function createAttendanceSheet(
 
   return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetId}`
 }
+
+/**
+ * Bulk-exports attendance for a single date by creating one sub-sheet per period
+ * in the master spreadsheet. Returns the URL to the first tab created.
+ *
+ * periodGroups: Map of period label → rows belonging to that period
+ *   e.g. "2026-10-01 – P1 Maths (09:00–09:45)" → AttendanceRow[]
+ */
+export async function createBulkPeriodSheets(
+  periodGroups: { tabTitle: string; rows: AttendanceRow[] }[],
+): Promise<string> {
+  const { sheets, drive } = getGoogleClients()
+  const shareEmail = process.env.GOOGLE_SHEETS_SHARE_EMAIL
+  const masterSpreadsheetEnv = process.env.GOOGLE_SPREADSHEET_ID
+
+  if (!masterSpreadsheetEnv) {
+    throw new Error(
+      'Bulk period export requires GOOGLE_SPREADSHEET_ID in .env.local. ' +
+      'Service accounts cannot create new spreadsheet files.'
+    )
+  }
+
+  const spreadsheetId = extractSpreadsheetId(masterSpreadsheetEnv)
+
+  let meta
+  try {
+    meta = await sheets.spreadsheets.get({ spreadsheetId })
+  } catch (err) {
+    throw new Error(
+      `Failed to access master spreadsheet (${spreadsheetId}): ${googleErrMsg(err)}. ` +
+      'Please ensure the Google Sheet is shared with your service account as Editor.'
+    )
+  }
+
+  const existingSheets = meta.data.sheets || []
+  const existingTitles = new Set(existingSheets.map((s) => s.properties?.title))
+
+  // Build deduped tab titles
+  const resolvedTitles: string[] = []
+  for (const group of periodGroups) {
+    let cleanTitle = group.tabTitle.replace(/[\\/?*[\]:]/g, '-').slice(0, 80).trim() || 'Attendance'
+    let finalTitle = cleanTitle
+    let counter = 1
+    while (existingTitles.has(finalTitle) || resolvedTitles.includes(finalTitle)) {
+      counter++
+      finalTitle = `${cleanTitle.slice(0, 75)} (${counter})`
+    }
+    resolvedTitles.push(finalTitle)
+  }
+
+  // Create all tabs in a single batchUpdate
+  const addSheetRequests = resolvedTitles.map((title) => ({
+    addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } },
+  }))
+
+  let addRes
+  try {
+    addRes = await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests: addSheetRequests },
+    })
+  } catch (err) {
+    throw new Error(`Failed to create period tabs: ${googleErrMsg(err)}`)
+  }
+
+  const sheetIds = addRes.data.replies!.map((r) => r.addSheet!.properties!.sheetId!)
+
+  // Remove untouched default Sheet1 if it was the only prior sheet
+  if (
+    existingSheets.length === 1 &&
+    existingSheets[0].properties?.title === 'Sheet1' &&
+    existingSheets[0].properties?.sheetId !== undefined
+  ) {
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: { requests: [{ deleteSheet: { sheetId: existingSheets[0].properties.sheetId } }] },
+      })
+    } catch { /* ignore */ }
+  }
+
+  // Write data + format each tab
+  const header = [
+    'Date', 'Class', 'Period Time', 'Period Type',
+    'Student Name', 'Roll Number', 'Status', 'Marked By', 'Remark', 'Marked At',
+  ]
+
+  for (let i = 0; i < periodGroups.length; i++) {
+    const { rows } = periodGroups[i]
+    const tabTitle = resolvedTitles[i]
+    const sheetId = sheetIds[i]
+
+    const dataRows = rows.map((r) => [
+      r.date, r.className, r.periodTime, r.periodType,
+      r.studentName, r.rollNumber, r.status, r.markedBy, r.remark, r.markedAt,
+    ])
+
+    // Write data
+    try {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `'${tabTitle}'!A1`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [header, ...dataRows] },
+      })
+    } catch (err) {
+      throw new Error(`Failed to write data to tab "${tabTitle}": ${googleErrMsg(err)}`)
+    }
+
+    // Format
+    const totalRows = dataRows.length + 1
+    const totalCols = header.length
+
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            // Bold header with deep blue background
+            {
+              repeatCell: {
+                range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: totalCols },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: { red: 0.165, green: 0.384, blue: 0.545 },
+                    textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
+                    horizontalAlignment: 'CENTER',
+                  },
+                },
+                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+              },
+            },
+            // Alternating rows
+            {
+              addConditionalFormatRule: {
+                rule: {
+                  ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols }],
+                  booleanRule: {
+                    condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=ISEVEN(ROW())' }] },
+                    format: { backgroundColor: { red: 0.945, green: 0.961, blue: 0.976 } },
+                  },
+                },
+                index: 0,
+              },
+            },
+            // Present green (status column = 6)
+            {
+              addConditionalFormatRule: {
+                rule: {
+                  ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 }],
+                  booleanRule: {
+                    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Present' }] },
+                    format: {
+                      backgroundColor: { red: 0.851, green: 0.949, blue: 0.867 },
+                      textFormat: { foregroundColor: { red: 0.106, green: 0.471, blue: 0.220 } },
+                    },
+                  },
+                },
+                index: 1,
+              },
+            },
+            // Absent red
+            {
+              addConditionalFormatRule: {
+                rule: {
+                  ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 }],
+                  booleanRule: {
+                    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Absent' }] },
+                    format: {
+                      backgroundColor: { red: 0.988, green: 0.867, blue: 0.867 },
+                      textFormat: { foregroundColor: { red: 0.671, green: 0.102, blue: 0.102 } },
+                    },
+                  },
+                },
+                index: 2,
+              },
+            },
+            // Auto-resize columns
+            {
+              autoResizeDimensions: {
+                dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: totalCols },
+              },
+            },
+            // Borders
+            {
+              updateBorders: {
+                range: { sheetId, startRowIndex: 0, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols },
+                top: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                bottom: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                left: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                right: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+                innerVertical: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+              },
+            },
+          ],
+        },
+      })
+    } catch (err) {
+      throw new Error(`Failed to format tab "${tabTitle}": ${googleErrMsg(err)}`)
+    }
+  }
+
+  // Return URL to the first tab
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetIds[0]}`
+}

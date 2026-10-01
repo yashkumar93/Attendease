@@ -1,15 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAttendanceSheet, createPivotAttendanceSheet, type AttendanceRow } from '@/lib/google/sheets'
+import {
+  createAttendanceSheet,
+  createPivotAttendanceSheet,
+  createBulkPeriodSheets,
+  type AttendanceRow,
+} from '@/lib/google/sheets'
 
 /**
  * POST /api/export
- * Body: { date?, dateFrom?, dateTo?, classId?, periodId?, rangePeriodId?, format?: 'csv' | 'sheets' }
+ * Body: { date?, dateFrom?, dateTo?, classId?, periodId?, rangePeriodId?,
+ *         format?: 'csv' | 'sheets' | 'sheets_bulk' }
  *
  * Returns:
- *   - format=csv  → CSV file download
- *   - format=sheets → JSON { url: '...' } with the Google Sheet URL
+ *   - format=csv         → CSV file download
+ *   - format=sheets      → JSON { url } with the Google Sheet URL (single tab)
+ *   - format=sheets_bulk → JSON { url, tabCount } — one tab per period for the selected date
  */
 export async function POST(request: Request) {
   try {
@@ -34,6 +41,136 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const { date, dateFrom, dateTo, classId, periodId, rangePeriodId, format = 'csv' } = body
+
+    // ── Bulk export: one sub-sheet per period for a single date ──────────
+    if (format === 'sheets_bulk') {
+      if (!date) {
+        return NextResponse.json(
+          { error: 'A date is required for bulk period export.' },
+          { status: 400 }
+        )
+      }
+
+      // Fetch all attendance for the date (with period metadata)
+      let bulkQuery = supabase
+        .from('attendance')
+        .select(`
+          status, marked_at, remark, marked_by,
+          students(name, roll_number),
+          periods!inner(
+            id, date, start_time, end_time, period_type, period_number,
+            classes(class_name),
+            subjects(subject_name)
+          )
+        `)
+        .eq('periods.date', date)
+
+      if (classId) {
+        bulkQuery = bulkQuery.eq('periods.class_id', classId)
+      }
+
+      const { data: records, error } = await bulkQuery
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+
+      if (!records || records.length === 0) {
+        return NextResponse.json(
+          { error: 'No attendance records found for the selected date' },
+          { status: 404 }
+        )
+      }
+
+      // Resolve human names for marked_by
+      const markerIds = Array.from(
+        new Set((records as any[]).map((r: any) => r.marked_by).filter(Boolean))
+      )
+      const markerMap = new Map<string, string>()
+      if (markerIds.length > 0) {
+        const { data: markerProfiles } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', markerIds)
+        for (const p of markerProfiles || []) {
+          markerMap.set(p.id, p.full_name)
+        }
+      }
+
+      // Group records by period (period_number + start_time = unique slot)
+      const periodGroupMap = new Map<string, { tabTitle: string; periodNumber: number; rows: AttendanceRow[] }>()
+
+      for (const r of records as any[]) {
+        const period = r.periods as any
+        const student = r.students as any
+        const cls = period?.classes as any
+        const subjectName = period?.subjects?.subject_name || ''
+        const markerName = markerMap.get(r.marked_by) || (r.marked_by ? 'Staff' : 'System')
+
+        const periodKey = `${period.period_number}::${period.start_time}`
+
+        if (!periodGroupMap.has(periodKey)) {
+          const subLabel = subjectName ? ` ${subjectName}` : ''
+          const tabTitle = `${date} – P${period.period_number}${subLabel} (${period.start_time?.slice(0, 5)}–${period.end_time?.slice(0, 5)})`
+          periodGroupMap.set(periodKey, {
+            tabTitle,
+            periodNumber: period.period_number,
+            rows: [],
+          })
+        }
+
+        periodGroupMap.get(periodKey)!.rows.push({
+          date: period?.date || '',
+          className: cls?.class_name || '',
+          periodTime: `${period?.start_time?.slice(0, 5)} - ${period?.end_time?.slice(0, 5)}`,
+          periodType: period?.period_type || '',
+          studentName: student?.name || '',
+          rollNumber: student?.roll_number || '',
+          status: r.status,
+          markedBy: markerName,
+          remark: r.remark || '',
+          markedAt: r.marked_at ? new Date(r.marked_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
+        })
+      }
+
+      // Sort groups by period_number
+      const periodGroups = Array.from(periodGroupMap.values())
+        .sort((a, b) => a.periodNumber - b.periodNumber)
+        .map(({ tabTitle, rows }) => ({ tabTitle, rows }))
+
+      if (periodGroups.length === 0) {
+        return NextResponse.json(
+          { error: 'No period groups found for the selected date.' },
+          { status: 404 }
+        )
+      }
+
+      let sheetUrl: string
+      try {
+        sheetUrl = await createBulkPeriodSheets(periodGroups)
+      } catch (sheetsErr: any) {
+        console.error('Bulk Google Sheets error:', sheetsErr)
+        return NextResponse.json(
+          { error: `Bulk export failed: ${sheetsErr.message}` },
+          { status: 500 }
+        )
+      }
+
+      // Log the export
+      const scopeDesc = `${date} – All Periods (${periodGroups.length} sheets)`
+      const { error: logErr } = await supabase.from('export_logs').insert({
+        scope_description: scopeDesc,
+        google_sheet_url: sheetUrl,
+        exported_by: user.id,
+      } as any)
+      if (logErr) {
+        console.warn('Could not insert bulk export log:', logErr.message)
+      }
+
+      return NextResponse.json({ url: sheetUrl, tabCount: periodGroups.length })
+    }
+
+    // ── Standard single export (csv / sheets) ───────────────────────────────
 
     // If a representative period slot is selected (rangePeriodId), resolve its details once
     let refPeriodData: any = null

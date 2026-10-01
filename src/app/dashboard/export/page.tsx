@@ -12,7 +12,7 @@ export default function ExportPage() {
 
   const [classes, setClasses] = useState<Class[]>([])
   const [exportLogs, setExportLogs] = useState<ExportLog[]>([])
-  const [loading, setLoading] = useState<'csv' | 'sheets' | null>(null)
+  const [loading, setLoading] = useState<'csv' | 'sheets' | 'sheets_bulk' | null>(null)
   const [logsLoading, setLogsLoading] = useState(true)
 
   // Export scope
@@ -185,6 +185,35 @@ export default function ExportPage() {
     }
   }
 
+  const handleBulkSheets = async () => {
+    if (!date) {
+      showToast('Select a date to bulk-export all periods.', 'error')
+      return
+    }
+    setLoading('sheets_bulk')
+    try {
+      const body: Record<string, unknown> = { date, format: 'sheets_bulk' }
+      if (classId) body.classId = classId
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        showToast(json.error || 'Unable to bulk export. Please try again.', 'error')
+        return
+      }
+      window.open(json.url, '_blank')
+      showToast(`${json.tabCount} period sheets created`)
+      fetchLogs()
+    } catch {
+      showToast('Unable to bulk export. Please try again.', 'error')
+    } finally {
+      setLoading(null)
+    }
+  }
+
   const isLoading = loading !== null
 
   return (
@@ -342,6 +371,33 @@ export default function ExportPage() {
               )}
             </button>
 
+            {/* Bulk export: one sub-sheet per period (single-date mode only) */}
+            {scopeType === 'single_date' && !periodId && (
+              <button
+                id="export-bulk-sheets-btn"
+                onClick={handleBulkSheets}
+                disabled={isLoading}
+                className="btn btn-secondary btn-lg"
+              >
+                {loading === 'sheets_bulk' ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Creating Period Sheets…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-1.007.662-1.862 1.574-2.147" />
+                    </svg>
+                    Bulk Export All Periods
+                  </>
+                )}
+              </button>
+            )}
+
             {/* Secondary CTA for CSV */}
             <button
               id="export-csv-btn"
@@ -367,6 +423,18 @@ export default function ExportPage() {
               )}
             </button>
           </div>
+
+          {/* Bulk export info callout — only visible in single-date + all-periods mode */}
+          {scopeType === 'single_date' && !periodId && (
+            <div className="rounded-lg border border-hairline bg-surface-soft p-4 text-xs text-muted leading-relaxed flex items-start gap-2.5">
+              <svg className="w-4 h-4 text-grove mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-1.007.662-1.862 1.574-2.147" />
+              </svg>
+              <div>
+                <strong className="text-ink">Bulk Export All Periods</strong> creates one sub-sheet per period for the selected date — up to 7 sheets in a single click, each named like <code className="text-[10px] bg-surface-card px-1 py-0.5 rounded font-mono">2026-10-01 – P1 Maths (09:00–09:45)</code>.
+              </div>
+            </div>
+          )}
 
           {/* Info callout */}
           <div className="rounded-lg border border-hairline bg-surface-soft p-4 text-xs text-muted leading-relaxed flex items-start gap-2.5">
