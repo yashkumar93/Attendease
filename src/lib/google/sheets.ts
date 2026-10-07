@@ -115,7 +115,7 @@ async function resolveTab(
         requests: [{ addSheet: { properties: { title: tabTitle, gridProperties: { frozenRowCount: 1 } } } }],
       },
     })
-    const sheetId = addSheetRes.data.replies?.[0]?.addSheet?.properties?.sheetId!
+    const sheetId = addSheetRes.data.replies?.[0]?.addSheet?.properties?.sheetId ?? 0
 
     // Remove untouched default Sheet1 if it's the only prior sheet
     if (
@@ -514,15 +514,55 @@ export async function createAttendanceSheet(
   return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetId}`
 }
 
+export interface BulkSessionStudent {
+  id: number
+  name: string
+  rollNumber: string
+}
+
+export interface BulkSessionData {
+  sessionTitle: string
+  periodNumber: number
+  dates: string[] // 'YYYY-MM-DD'
+  students: BulkSessionStudent[]
+  attendanceMap: Map<number, Map<string, string>> // studentId -> (date -> 'Present' | 'Absent')
+}
+
+export function formatHeaderDate(isoDate: string): string {
+  if (!isoDate) return ''
+  const parts = isoDate.split('-').map(Number)
+  if (parts.length < 3) return isoDate
+  const [year, month, day] = parts
+  const dt = new Date(year, month - 1, day)
+  const monthName = dt.toLocaleString('en-US', { month: 'short' })
+  const dayStr = String(day).padStart(2, '0')
+  return `${monthName}-${dayStr}`
+}
+
+export function getSessionTitle(periodNumber: number): string {
+  const ordinals: Record<number, string> = {
+    1: '1st Session',
+    2: '2nd Session',
+    3: '3rd Session',
+    4: '4th Session',
+    5: '5th Session',
+    6: '6th Session',
+    7: '7th Session',
+  }
+  return ordinals[periodNumber] || `${periodNumber}th Session`
+}
+
 /**
- * Bulk-exports attendance for a single date by creating one sub-sheet per period
- * in the master spreadsheet. Returns the URL to the first tab created.
+ * Bulk exports attendance across periods as up to 7 session sub-sheets
+ * ("1st Session", "2nd Session", ... "7th Session").
  *
- * periodGroups: Map of period label → rows belonging to that period
- *   e.g. "2026-10-01 – P1 Maths (09:00–09:45)" → AttendanceRow[]
+ * Each sheet is organized in a student rows × date columns matrix:
+ *   Row 1: Attendance banner (A1:B1 merged, orange fill)
+ *   Row 2: Name | Roll Number | Aug-20 | Aug-21 | ...
+ *   Row 3+: Student rows with Present (green pill) / Absent (red pill)
  */
-export async function createBulkPeriodSheets(
-  periodGroups: { tabTitle: string; rows: AttendanceRow[] }[],
+export async function createBulkSessionSheets(
+  sessions: BulkSessionData[]
 ): Promise<string> {
   const { sheets, drive } = getGoogleClients()
   const shareEmail = process.env.GOOGLE_SHEETS_SHARE_EMAIL
@@ -548,39 +588,37 @@ export async function createBulkPeriodSheets(
   }
 
   const existingSheets = meta.data.sheets || []
-  const existingTitles = new Set(existingSheets.map((s) => s.properties?.title))
-
-  // Build deduped tab titles
-  const resolvedTitles: string[] = []
-  for (const group of periodGroups) {
-    let cleanTitle = group.tabTitle.replace(/[\\/?*[\]:]/g, '-').slice(0, 80).trim() || 'Attendance'
-    let finalTitle = cleanTitle
-    let counter = 1
-    while (existingTitles.has(finalTitle) || resolvedTitles.includes(finalTitle)) {
-      counter++
-      finalTitle = `${cleanTitle.slice(0, 75)} (${counter})`
+  const existingSheetMap = new Map<string, { sheetId: number; merges?: any[] }>()
+  for (const s of existingSheets) {
+    if (s.properties?.title && s.properties?.sheetId != null) {
+      existingSheetMap.set(s.properties.title, {
+        sheetId: s.properties.sheetId,
+        merges: s.merges || undefined,
+      })
     }
-    resolvedTitles.push(finalTitle)
   }
 
-  // Create all tabs in a single batchUpdate
-  const addSheetRequests = resolvedTitles.map((title) => ({
-    addSheet: { properties: { title, gridProperties: { frozenRowCount: 1 } } },
-  }))
-
-  let addRes
-  try {
-    addRes = await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests: addSheetRequests },
-    })
-  } catch (err) {
-    throw new Error(`Failed to create period tabs: ${googleErrMsg(err)}`)
+  // 1. Ensure all session sheets exist
+  for (const s of sessions) {
+    if (!existingSheetMap.has(s.sessionTitle)) {
+      try {
+        const addRes = await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            requests: [{ addSheet: { properties: { title: s.sessionTitle } } }],
+          },
+        })
+        const newSheetId = addRes.data.replies?.[0]?.addSheet?.properties?.sheetId
+        if (newSheetId != null) {
+          existingSheetMap.set(s.sessionTitle, { sheetId: newSheetId })
+        }
+      } catch (err) {
+        throw new Error(`Failed to create session tab "${s.sessionTitle}": ${googleErrMsg(err)}`)
+      }
+    }
   }
 
-  const sheetIds = addRes.data.replies!.map((r) => r.addSheet!.properties!.sheetId!)
-
-  // Remove untouched default Sheet1 if it was the only prior sheet
+  // Delete untouched default 'Sheet1' if present
   if (
     existingSheets.length === 1 &&
     existingSheets[0].properties?.title === 'Sheet1' &&
@@ -594,128 +632,397 @@ export async function createBulkPeriodSheets(
     } catch { /* ignore */ }
   }
 
-  // Write data + format each tab
-  const header = [
-    'Date', 'Class', 'Period Time', 'Period Type',
-    'Student Name', 'Roll Number', 'Status', 'Marked By', 'Remark', 'Marked At',
-  ]
+  // If shareEmail is configured, ensure write permission
+  if (shareEmail) {
+    try {
+      await drive.permissions.create({
+        fileId: spreadsheetId,
+        requestBody: { type: 'user', role: 'writer', emailAddress: shareEmail },
+        sendNotificationEmail: false,
+      })
+    } catch { /* ignore if already shared */ }
+  }
 
-  for (let i = 0; i < periodGroups.length; i++) {
-    const { rows } = periodGroups[i]
-    const tabTitle = resolvedTitles[i]
-    const sheetId = sheetIds[i]
+  const sessionSheetIds: number[] = []
 
-    const dataRows = rows.map((r) => [
-      r.date, r.className, r.periodTime, r.periodType,
-      r.studentName, r.rollNumber, r.status, r.markedBy, r.remark, r.markedAt,
-    ])
+  // 2. Populate and format each session sheet
+  for (let i = 0; i < sessions.length; i++) {
+    const session = sessions[i]
+    const sheetInfo = existingSheetMap.get(session.sessionTitle)
+    if (!sheetInfo) continue
 
-    // Write data
+    const sheetId = sheetInfo.sheetId
+    sessionSheetIds.push(sheetId)
+
+    const dateHeaders = session.dates.map(formatHeaderDate)
+    const headerRow1 = ['Attendance', '', ...session.dates.map(() => '')]
+    const headerRow2 = ['Name', 'Roll Number', ...dateHeaders]
+
+    const dataRows = session.students.map((student) => {
+      const studentStatusMap = session.attendanceMap.get(student.id)
+      const dateCells = session.dates.map((d) => studentStatusMap?.get(d) || '')
+      return [student.name, student.rollNumber, ...dateCells]
+    })
+
+    const totalCols = headerRow2.length
+    const totalRows = 2 + dataRows.length
+
+    // Clear any previous values on this sheet tab
+    try {
+      await sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range: `'${session.sessionTitle}'!A1:ZZ1000`,
+      })
+    } catch { /* ignore */ }
+
+    // Write grid values
     try {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `'${tabTitle}'!A1`,
-        valueInputOption: 'RAW',
-        requestBody: { values: [header, ...dataRows] },
+        range: `'${session.sessionTitle}'!A1`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: [headerRow1, headerRow2, ...dataRows],
+        },
       })
     } catch (err) {
-      throw new Error(`Failed to write data to tab "${tabTitle}": ${googleErrMsg(err)}`)
+      throw new Error(`Failed to write data to tab "${session.sessionTitle}": ${googleErrMsg(err)}`)
     }
 
-    // Format
-    const totalRows = dataRows.length + 1
-    const totalCols = header.length
+    // Format sheet
+    const orange = { red: 0.984, green: 0.549, blue: 0.0 } // #FB8C00 vibrant orange matching screenshot
+    const formatRequests: any[] = []
+
+    // Ensure tab index is ordered properly (1st Session -> 2nd Session -> ...)
+    formatRequests.push({
+      updateSheetProperties: {
+        properties: {
+          sheetId,
+          index: i,
+          gridProperties: { frozenRowCount: 2, frozenColumnCount: 2 },
+        },
+        fields: 'index,gridProperties.frozenRowCount,gridProperties.frozenColumnCount',
+      },
+    })
+
+    // Unmerge prior merges if any existed on this sheet
+    if (sheetInfo.merges && sheetInfo.merges.length > 0) {
+      for (const m of sheetInfo.merges) {
+        formatRequests.push({
+          unmergeCells: { range: m },
+        })
+      }
+    }
+
+    // Merge A1:B1 for 'Attendance' banner
+    formatRequests.push({
+      mergeCells: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: 2,
+        },
+        mergeType: 'MERGE_ALL',
+      },
+    })
+
+    // Row 1 formatting (Attendance banner across all cols)
+    formatRequests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: totalCols,
+        },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: orange,
+            textFormat: {
+              bold: true,
+              fontSize: 11,
+              foregroundColor: { red: 0, green: 0, blue: 0 },
+            },
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+          },
+        },
+        fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
+      },
+    })
+
+    // Row 2 formatting (Column headers: Name, Roll Number, Dates)
+    formatRequests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 1,
+          endRowIndex: 2,
+          startColumnIndex: 0,
+          endColumnIndex: totalCols,
+        },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: orange,
+            textFormat: {
+              bold: true,
+              fontSize: 10,
+              foregroundColor: { red: 0, green: 0, blue: 0 },
+            },
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+          },
+        },
+        fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
+      },
+    })
+
+    // Left-align 'Name' column header in A2
+    formatRequests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 1,
+          endRowIndex: 2,
+          startColumnIndex: 0,
+          endColumnIndex: 1,
+        },
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: 'LEFT',
+          },
+        },
+        fields: 'userEnteredFormat.horizontalAlignment',
+      },
+    })
+
+    // Left-align student names in Col A
+    formatRequests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 2,
+          endRowIndex: totalRows,
+          startColumnIndex: 0,
+          endColumnIndex: 1,
+        },
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: 'LEFT',
+            verticalAlignment: 'MIDDLE',
+          },
+        },
+        fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment)',
+      },
+    })
+
+    // Center-align Roll Number in Col B
+    formatRequests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 2,
+          endRowIndex: totalRows,
+          startColumnIndex: 1,
+          endColumnIndex: 2,
+        },
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+          },
+        },
+        fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment)',
+      },
+    })
+
+    // Center-align all date cells (Col C..totalCols)
+    formatRequests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 2,
+          endRowIndex: totalRows,
+          startColumnIndex: 2,
+          endColumnIndex: totalCols,
+        },
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+          },
+        },
+        fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment)',
+      },
+    })
+
+    // Data validation dropdown chips for Present / Absent
+    formatRequests.push({
+      setDataValidation: {
+        range: {
+          sheetId,
+          startRowIndex: 2,
+          endRowIndex: totalRows,
+          startColumnIndex: 2,
+          endColumnIndex: totalCols,
+        },
+        rule: {
+          condition: {
+            type: 'ONE_OF_LIST',
+            values: [
+              { userEnteredValue: 'Present' },
+              { userEnteredValue: 'Absent' },
+            ],
+          },
+          showCustomUi: true,
+          strict: false,
+        },
+      },
+    })
+
+    // Conditional format: Present -> Deep green background, bold white text
+    formatRequests.push({
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [{
+            sheetId,
+            startRowIndex: 2,
+            endRowIndex: totalRows,
+            startColumnIndex: 2,
+            endColumnIndex: totalCols,
+          }],
+          booleanRule: {
+            condition: {
+              type: 'TEXT_EQ',
+              values: [{ userEnteredValue: 'Present' }],
+            },
+            format: {
+              backgroundColor: { red: 0.082, green: 0.455, blue: 0.224 },
+              textFormat: {
+                foregroundColor: { red: 1, green: 1, blue: 1 },
+                bold: true,
+              },
+            },
+          },
+        },
+        index: 0,
+      },
+    })
+
+    // Conditional format: Absent -> Deep red background, bold white text
+    formatRequests.push({
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [{
+            sheetId,
+            startRowIndex: 2,
+            endRowIndex: totalRows,
+            startColumnIndex: 2,
+            endColumnIndex: totalCols,
+          }],
+          booleanRule: {
+            condition: {
+              type: 'TEXT_EQ',
+              values: [{ userEnteredValue: 'Absent' }],
+            },
+            format: {
+              backgroundColor: { red: 0.773, green: 0.137, blue: 0.137 },
+              textFormat: {
+                foregroundColor: { red: 1, green: 1, blue: 1 },
+                bold: true,
+              },
+            },
+          },
+        },
+        index: 1,
+      },
+    })
+
+    // Column widths: Name (180px), Roll Number (110px), Dates (95px)
+    formatRequests.push(
+      {
+        updateDimensionProperties: {
+          range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 },
+          properties: { pixelSize: 180 },
+          fields: 'pixelSize',
+        },
+      },
+      {
+        updateDimensionProperties: {
+          range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 },
+          properties: { pixelSize: 110 },
+          fields: 'pixelSize',
+        },
+      },
+      {
+        updateDimensionProperties: {
+          range: { sheetId, dimension: 'COLUMNS', startIndex: 2, endIndex: totalCols },
+          properties: { pixelSize: 95 },
+          fields: 'pixelSize',
+        },
+      }
+    )
+
+    // Grid Borders
+    formatRequests.push({
+      updateBorders: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: totalRows,
+          startColumnIndex: 0,
+          endColumnIndex: totalCols,
+        },
+        top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+        bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+        left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+        right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+        innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+        innerVertical: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+      },
+    })
+
+    // Basic filter on Row 2
+    formatRequests.push({
+      setBasicFilter: {
+        filter: {
+          range: {
+            sheetId,
+            startRowIndex: 1,
+            endRowIndex: totalRows,
+            startColumnIndex: 0,
+            endColumnIndex: totalCols,
+          },
+        },
+      },
+    })
 
     try {
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
-        requestBody: {
-          requests: [
-            // Bold header with deep blue background
-            {
-              repeatCell: {
-                range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: totalCols },
-                cell: {
-                  userEnteredFormat: {
-                    backgroundColor: { red: 0.165, green: 0.384, blue: 0.545 },
-                    textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
-                    horizontalAlignment: 'CENTER',
-                  },
-                },
-                fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
-              },
-            },
-            // Alternating rows
-            {
-              addConditionalFormatRule: {
-                rule: {
-                  ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols }],
-                  booleanRule: {
-                    condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=ISEVEN(ROW())' }] },
-                    format: { backgroundColor: { red: 0.945, green: 0.961, blue: 0.976 } },
-                  },
-                },
-                index: 0,
-              },
-            },
-            // Present green (status column = 6)
-            {
-              addConditionalFormatRule: {
-                rule: {
-                  ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 }],
-                  booleanRule: {
-                    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Present' }] },
-                    format: {
-                      backgroundColor: { red: 0.851, green: 0.949, blue: 0.867 },
-                      textFormat: { foregroundColor: { red: 0.106, green: 0.471, blue: 0.220 } },
-                    },
-                  },
-                },
-                index: 1,
-              },
-            },
-            // Absent red
-            {
-              addConditionalFormatRule: {
-                rule: {
-                  ranges: [{ sheetId, startRowIndex: 1, endRowIndex: totalRows, startColumnIndex: 6, endColumnIndex: 7 }],
-                  booleanRule: {
-                    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: 'Absent' }] },
-                    format: {
-                      backgroundColor: { red: 0.988, green: 0.867, blue: 0.867 },
-                      textFormat: { foregroundColor: { red: 0.671, green: 0.102, blue: 0.102 } },
-                    },
-                  },
-                },
-                index: 2,
-              },
-            },
-            // Auto-resize columns
-            {
-              autoResizeDimensions: {
-                dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: totalCols },
-              },
-            },
-            // Borders
-            {
-              updateBorders: {
-                range: { sheetId, startRowIndex: 0, endRowIndex: totalRows, startColumnIndex: 0, endColumnIndex: totalCols },
-                top: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
-                bottom: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
-                left: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
-                right: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
-                innerHorizontal: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
-                innerVertical: { style: 'SOLID', width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
-              },
-            },
-          ],
-        },
+        requestBody: { requests: formatRequests },
       })
-    } catch (err) {
-      throw new Error(`Failed to format tab "${tabTitle}": ${googleErrMsg(err)}`)
+    } catch (formatErr) {
+      console.error(`[Sheets] Failed to format tab "${session.sessionTitle}":`, formatErr)
+      throw new Error(`Failed to format tab "${session.sessionTitle}": ${googleErrMsg(formatErr)}`)
     }
   }
 
-  // Return URL to the first tab
-  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetIds[0]}`
+  const primarySheetId = sessionSheetIds[0] ?? 0
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${primarySheetId}`
+}
+
+/**
+ * Backwards compatibility wrapper for createBulkPeriodSheets
+ */
+export async function createBulkPeriodSheets(
+  periodGroups: { tabTitle: string; rows: AttendanceRow[] }[],
+): Promise<string> {
+  // If legacy call happens, fall back to standard single attendance sheet
+  const firstGroup = periodGroups[0]
+  if (!firstGroup) throw new Error('No period groups provided')
+  return createAttendanceSheet(firstGroup.tabTitle, firstGroup.rows)
 }

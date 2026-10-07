@@ -219,7 +219,7 @@ export default function ExportPage() {
         return
       }
       window.open(json.url, '_blank')
-      showToast(`${json.tabCount} period sheets created`)
+      showToast(`${json.tabCount} session sheets created`)
       fetchLogs()
     } catch {
       showToast('Unable to bulk export. Please try again.', 'error')
@@ -399,14 +399,14 @@ export default function ExportPage() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    Creating Period Sheets…
+                    Creating Session Sheets…
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-1.007.662-1.862 1.574-2.147" />
                     </svg>
-                    Bulk Export All Periods
+                    Bulk Export All Periods (7 Sessions)
                   </>
                 )}
               </button>
@@ -445,7 +445,7 @@ export default function ExportPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-1.007.662-1.862 1.574-2.147" />
               </svg>
               <div>
-                <strong className="text-ink">Bulk Export All Periods</strong> creates one sub-sheet per period {scopeType === 'date_range' ? 'for every date in the range' : 'for the selected date'} — each named like <code className="text-[10px] bg-surface-card px-1 py-0.5 rounded font-mono">2026-10-01 – P1 Maths (09:00–09:45)</code>. {scopeType === 'date_range' && 'Sheets are ordered by date, then period number.'}
+                <strong className="text-ink">Bulk Export All Periods</strong> generates 7 session sub-sheets (<code className="text-[10px] bg-surface-card px-1 py-0.5 rounded font-mono">1st Session</code> to <code className="text-[10px] bg-surface-card px-1 py-0.5 rounded font-mono">7th Session</code>) in date-matrix format with student rows (Name &amp; Roll Number) and date columns, with styled Present/Absent badges and dropdowns.
               </div>
             </div>
           )}
