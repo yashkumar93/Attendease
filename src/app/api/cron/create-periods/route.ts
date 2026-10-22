@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { ensureDailyPeriods } from '@/app/actions/auto-schedule'
+import { ensureDateRangePeriods } from '@/app/actions/auto-schedule'
 
 /**
  * GET /api/cron/create-periods
- * Creates today's 7 period slots for all classes if they don't already exist.
+ * Automatically schedules 7 period slots for all classes for today and upcoming days.
  * Secured with CRON_SECRET header (for Vercel Cron or external cron services).
  */
 export async function GET(request: Request) {
@@ -17,7 +17,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await ensureDailyPeriods()
+    const { searchParams } = new URL(request.url)
+    const days = parseInt(searchParams.get('days') || '2', 10) // Pre-schedules today + tomorrow by default
+
+    const result = await ensureDateRangePeriods(undefined, days)
     return NextResponse.json(result)
   } catch (err) {
     console.error('Cron create-periods error:', err)
@@ -27,3 +30,4 @@ export async function GET(request: Request) {
     )
   }
 }
+

@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPeriod, deletePeriod } from '@/app/actions/schedule'
+import { ensureDailyPeriods, ensureDateRangePeriods } from '@/app/actions/auto-schedule'
 import { Modal, ConfirmModal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/ToastProvider'
 import type { Class, Subject, Profile } from '@/lib/types/database'
@@ -34,6 +35,8 @@ export default function SchedulePage() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [instructors, setInstructors] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
+  const [isScheduling, setIsScheduling] = useState(false)
+  const [showAutoScheduleModal, setShowAutoScheduleModal] = useState(false)
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [addForClass, setAddForClass] = useState<number | null>(null)
@@ -47,7 +50,30 @@ export default function SchedulePage() {
       supabase.from('subjects').select('*').order('subject_name'),
       supabase.from('profiles').select('*').eq('role', 'instructor').eq('is_active', true).order('full_name'),
     ])
-    if (periodsRes.data) setPeriods(periodsRes.data as PeriodRow[])
+
+    const classesList = classesRes.data || []
+    let periodsList = (periodsRes.data as PeriodRow[]) || []
+
+    // Automatically ensure all classes have their 7 daily periods if not fully scheduled
+    const expectedTotal = classesList.length * 7
+    if (classesList.length > 0 && periodsList.length < expectedTotal && date) {
+      try {
+        const autoRes = await ensureDailyPeriods(date)
+        if (autoRes?.totalCreated && autoRes.totalCreated > 0) {
+          const refetch = await supabase
+            .from('periods')
+            .select('*, classes(class_name), subjects(subject_name), profiles(full_name)')
+            .eq('date', date)
+            .order('class_id')
+            .order('start_time')
+          if (refetch.data) periodsList = refetch.data as PeriodRow[]
+        }
+      } catch (err) {
+        console.error('Auto-schedule on fetch failed:', err)
+      }
+    }
+
+    setPeriods(periodsList)
     if (classesRes.data) setClasses(classesRes.data)
     if (subjectsRes.data) setSubjects(subjectsRes.data)
     if (instructorsRes.data) setInstructors(instructorsRes.data)
@@ -62,6 +88,34 @@ export default function SchedulePage() {
   const displayClasses = selectedClass
     ? classes.filter((c) => c.id === selectedClass)
     : classes
+
+  const handleAutoSchedule = async (mode: 'selected' | 'next7' | 'force') => {
+    setIsScheduling(true)
+    startTransition(async () => {
+      try {
+        if (mode === 'selected' || mode === 'force') {
+          const res = await ensureDailyPeriods(date, { forceActiveDay: mode === 'force' })
+          if (res.error) {
+            showToast(res.error, 'error')
+          } else if (res.skipped) {
+            showToast(`Skipped: ${res.reason}. Use Force Schedule to override.`, 'info')
+          } else {
+            showToast(res.message || 'Classes scheduled successfully', 'success')
+            await fetchAll()
+          }
+        } else if (mode === 'next7') {
+          const res = await ensureDateRangePeriods(date, 7)
+          showToast(`Auto-scheduled next 7 days (${res.totalCreated} total period slots created)`, 'success')
+          await fetchAll()
+        }
+      } catch (err: any) {
+        showToast(err.message || 'Auto-scheduling failed', 'error')
+      } finally {
+        setIsScheduling(false)
+        setShowAutoScheduleModal(false)
+      }
+    })
+  }
 
   const handleAddPeriod = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -100,15 +154,32 @@ export default function SchedulePage() {
             Configure periods, timings, and faculty assignments for each day
           </p>
         </div>
-        <button
-          onClick={() => { setShowAddModal(true); setAddForClass(null) }}
-          className="btn btn-primary"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Add period
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => setShowAutoScheduleModal(true)}
+            disabled={isScheduling || isPending}
+            className="btn btn-secondary inline-flex items-center gap-2 border-emerald-600/30 text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/80 active:bg-emerald-200/80 transition-all font-medium text-sm shadow-xs"
+            title="Automatically schedule all classes"
+          >
+            {isScheduling ? (
+              <span className="w-4 h-4 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4 text-emerald-700" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+              </svg>
+            )}
+            <span>Auto-schedule all classes</span>
+          </button>
+          <button
+            onClick={() => { setShowAddModal(true); setAddForClass(null) }}
+            className="btn btn-primary"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Add period
+          </button>
+        </div>
       </div>
 
       {/* Date + Class filter */}
@@ -169,30 +240,56 @@ export default function SchedulePage() {
                       Cohort (50 Students)
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted font-mono">
-                      {classPeriods.length} / 7 periods
-                    </span>
-                    <button
-                      onClick={() => { setAddForClass(cls.id); setShowAddModal(true) }}
-                      className="btn btn-secondary btn-sm"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                      </svg>
-                      Add period
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted font-mono">
+                        {classPeriods.length} / 7 periods
+                      </span>
+                      {classPeriods.length === 7 ? (
+                        <span className="badge badge-pill text-[11px] bg-emerald-50 text-emerald-700 border-emerald-200 hidden sm:inline-flex items-center gap-1">
+                          <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                          </svg>
+                          Fully scheduled
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleAutoSchedule('selected')}
+                          disabled={isScheduling || isPending}
+                          className="btn btn-secondary btn-sm text-[11px] py-1 px-2.5 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-300"
+                          title="Schedule missing periods for all classes"
+                        >
+                          ⚡ Auto-fill slots
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setAddForClass(cls.id); setShowAddModal(true) }}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        Add period
+                      </button>
+                    </div>
                   </div>
-                </div>
                 {classPeriods.length === 0 ? (
                   <div className="p-8 text-center">
-                    <p className="text-sm text-muted">No periods scheduled for this cohort yet.</p>
-                    <button
-                      onClick={() => { setAddForClass(cls.id); setShowAddModal(true) }}
-                      className="btn btn-secondary btn-sm mt-3"
-                    >
-                      Add period
-                    </button>
+                    <p className="text-sm text-muted">No periods scheduled for this cohort on {date}.</p>
+                    <div className="flex justify-center gap-3 mt-3">
+                      <button
+                        onClick={() => handleAutoSchedule('selected')}
+                        disabled={isScheduling || isPending}
+                        className="btn btn-primary btn-sm inline-flex items-center gap-1.5"
+                      >
+                        <span>⚡ Auto-schedule 7 periods</span>
+                      </button>
+                      <button
+                        onClick={() => { setAddForClass(cls.id); setShowAddModal(true) }}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        Add period manually
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="divide-y divide-hairline">
@@ -210,8 +307,8 @@ export default function SchedulePage() {
                           </span>
                         </div>
                         <div className="flex-1 min-w-0 sm:ms-2">
-                          <p className="font-medium text-sm text-ink">{period.subjects?.subject_name}</p>
-                          <p className="text-xs text-muted">{period.profiles?.full_name}</p>
+                          <p className="font-medium text-sm text-ink">{period.subjects?.subject_name || <span className="text-muted-soft italic font-normal">Unassigned subject</span>}</p>
+                          <p className="text-xs text-muted">{period.profiles?.full_name || <span className="text-muted-soft italic">No faculty assigned</span>}</p>
                         </div>
                         <div className="flex items-center gap-3 self-end sm:self-center">
                           <span className="badge badge-pill text-[10px] hidden sm:inline-flex">
@@ -237,6 +334,88 @@ export default function SchedulePage() {
           })}
         </div>
       )}
+
+      {/* Auto-schedule Modal */}
+      <Modal
+        isOpen={showAutoScheduleModal}
+        onClose={() => setShowAutoScheduleModal(false)}
+        title="Automatically schedule all classes"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Automatically generate all 7 standard period slots (9:20 AM – 4:00 PM) for all cohorts. Existing periods and attendance records will be preserved.
+          </p>
+
+          <div className="space-y-3 pt-2">
+            <button
+              type="button"
+              onClick={() => handleAutoSchedule('selected')}
+              disabled={isScheduling || isPending}
+              className="w-full card p-4 flex items-center justify-between text-start hover:border-emerald-500 hover:bg-emerald-50/40 transition-colors group"
+            >
+              <div>
+                <p className="text-sm font-semibold text-ink group-hover:text-emerald-900">
+                  Schedule Selected Date ({date})
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  Fills all missing slots for all cohorts on the currently selected day.
+                </p>
+              </div>
+              <span className="btn btn-secondary btn-sm text-xs font-medium text-emerald-800 border-emerald-300">
+                Run now
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAutoSchedule('next7')}
+              disabled={isScheduling || isPending}
+              className="w-full card p-4 flex items-center justify-between text-start hover:border-emerald-500 hover:bg-emerald-50/40 transition-colors group"
+            >
+              <div>
+                <p className="text-sm font-semibold text-ink group-hover:text-emerald-900">
+                  Pre-Schedule Next 7 Days
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  Ensures all cohorts are fully scheduled for the upcoming week (skips Sundays).
+                </p>
+              </div>
+              <span className="btn btn-secondary btn-sm text-xs font-medium text-emerald-800 border-emerald-300">
+                7 Days
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAutoSchedule('force')}
+              disabled={isScheduling || isPending}
+              className="w-full card p-4 flex items-center justify-between text-start hover:border-hairline hover:bg-surface-soft/60 transition-colors group"
+            >
+              <div>
+                <p className="text-sm font-medium text-ink">
+                  Force Schedule (Including Sundays)
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  Overrides Sunday restriction to schedule special weekend sessions.
+                </p>
+              </div>
+              <span className="btn btn-secondary btn-sm text-xs">
+                Force
+              </span>
+            </button>
+          </div>
+
+          <div className="flex justify-end pt-3 border-t border-hairline">
+            <button
+              type="button"
+              onClick={() => setShowAutoScheduleModal(false)}
+              className="btn btn-secondary text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Add Period Modal */}
       <Modal

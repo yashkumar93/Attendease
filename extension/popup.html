@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Attendease – CCBP &amp; eFlow Sync</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+          <rect x="3" y="4" width="18" height="16" rx="2" stroke-linecap="round" />
+          <path d="M8 2v4M16 2v4" stroke-linecap="round" />
+        </svg>
+        <span class="header-title">Attendease</span>
+      </div>
+      <div class="header-actions">
+        <span class="header-badge" id="header-platform-badge">CCBP Sync</span>
+        <button id="btn-toggle-settings" class="icon-btn" title="Extension Settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Settings Panel (Collapsible) -->
+    <div id="settings-panel" class="settings-panel hidden">
+      <div class="settings-header">
+        <h4>Server Configuration</h4>
+        <button id="btn-close-settings" class="close-btn">&times;</button>
+      </div>
+      <div class="form-group">
+        <label for="setting-api-url">Attendease App URL</label>
+        <input type="text" id="setting-api-url" class="input" placeholder="http://localhost:3000" />
+        <span class="help-text">Use http://localhost:3000 for local development.</span>
+      </div>
+      <button id="btn-save-settings" class="btn btn-secondary btn-sm">Save & Reconnect</button>
+    </div>
+
+    <!-- Status Banner -->
+    <div id="status-banner" class="status-banner hidden">
+      <div class="status-icon" id="status-icon"></div>
+      <p class="status-text" id="status-text"></p>
+    </div>
+
+    <!-- Step 1: Not on a supported Platform -->
+    <div id="step-not-ccbp" class="step hidden">
+      <div class="empty-state">
+        <div class="empty-icon-wrap">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v4M12 16h.01" stroke-linecap="round" />
+          </svg>
+        </div>
+        <h3>Unsupported Page</h3>
+        <p>Open this extension on the <strong>CCBP Instructor Platform</strong> or the <strong>eFlow Attendance Workbench</strong>.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px">
+          <a href="https://niat-instructor-platform.ccbp.in" target="_blank" class="btn btn-secondary btn-sm">Open CCBP &rarr;</a>
+          <a href="https://eflow.geetauniversity.com/academic_v2/attendance_workbench" target="_blank" class="btn btn-primary btn-sm">Open eFlow &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step eFlow: eFlow Auto-Mark Mode -->
+    <div id="step-eflow" class="step hidden">
+
+      <!-- Info Card: detected period & date -->
+      <div class="scraped-info-card">
+        <div class="info-row">
+          <span class="info-label">Detected Period</span>
+          <span class="info-value session-title" id="eflow-period-label">Detecting&hellip;</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date</span>
+          <span class="info-value" id="eflow-date-label">&mdash;</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">eFlow Class</span>
+          <span class="info-value" id="eflow-class-label">Reading page&hellip;</span>
+        </div>
+      </div>
+
+      <!-- Absent students fetched from Attendease -->
+      <div class="absent-list-wrapper">
+        <div class="section-header">
+          <h4 class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4-4v2" stroke-linecap="round" stroke-linejoin="round" />
+              <circle cx="9" cy="7" r="4" />
+              <line x1="17" y1="11" x2="23" y2="11" stroke-linecap="round" />
+            </svg>
+            Absent Students (from Attendease)
+          </h4>
+          <span class="chip-count" id="eflow-absent-count">0 students</span>
+        </div>
+        <div class="absent-chips" id="eflow-absent-chips">
+          <span class="empty-chips-msg">Fetching absent list&hellip;</span>
+        </div>
+      </div>
+
+      <!-- Class selector for Attendease lookup -->
+      <div class="config-form" style="padding-top:8px">
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="eflow-class-select">Attendease Class</label>
+            <select id="eflow-class-select" class="select">
+              <option value="1">Class 1</option>
+            </select>
+          </div>
+          <div class="form-group flex-1">
+            <label for="eflow-period-select">Period</label>
+            <select id="eflow-period-select" class="select">
+              <option value="1">Period 1</option>
+              <option value="2" selected>Period 2</option>
+              <option value="3">Period 3</option>
+              <option value="4">Period 4</option>
+              <option value="5">Period 5</option>
+              <option value="6">Period 6</option>
+              <option value="7">Period 7</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="actions">
+        <button id="btn-eflow-fetch" class="btn btn-secondary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+          Refresh List
+        </button>
+        <button id="btn-eflow-automark" class="btn btn-primary" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 17l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Auto-Mark Absent
+        </button>
+      </div>
+
+      <!-- eFlow Result Banner -->
+      <div id="eflow-result" class="eflow-result hidden">
+        <div class="eflow-result-row" id="eflow-result-marked"></div>
+        <div class="eflow-result-row" id="eflow-result-notfound"></div>
+        <p class="helper-text" style="margin-top:8px;text-align:center">
+          ✅ Review the marks above, then click <strong>All Done</strong> on the eFlow page to submit.
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 2: Configure & Scrape (Main View) -->
+    <div id="step-config" class="step hidden">
+      <!-- Session Card -->
+      <div class="scraped-info-card">
+        <div class="info-row">
+          <span class="info-label">CCBP Session</span>
+          <span class="info-value session-title" id="session-title">Scanning page&hellip;</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Scraped Absentees</span>
+          <div class="absent-pill">
+            <span class="absent-count" id="absent-count">0</span>
+            <span class="absent-sub" id="absent-expected"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Absent Names List -->
+      <div id="absent-list-wrapper" class="absent-list-wrapper">
+        <div class="section-header">
+          <h4 class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4-4v2" stroke-linecap="round" stroke-linejoin="round" />
+              <circle cx="9" cy="7" r="4" />
+              <line x1="17" y1="11" x2="23" y2="11" stroke-linecap="round" />
+            </svg>
+            Absent Students
+          </h4>
+          <span class="chip-count" id="chip-count">0 names</span>
+        </div>
+        <div class="absent-chips" id="absent-chips">
+          <span class="empty-chips-msg">No absent students found yet. Click Scrape below.</span>
+        </div>
+
+        <!-- Add student manually -->
+        <div class="add-student-row">
+          <input type="text" id="input-add-student" class="input input-sm"
+            placeholder="+ Add another student name&hellip;" />
+          <button id="btn-add-student" class="btn btn-secondary btn-sm" type="button">Add</button>
+        </div>
+      </div>
+
+      <!-- Attendance Target Form -->
+      <div class="config-form">
+        <!-- Instructor Field (Remembers choice permanently) -->
+        <div class="form-group">
+          <div class="label-with-hint">
+            <label for="instructor-select">Instructor Name</label>
+            <span class="badge-hint" id="instructor-hint">Auto-Saved</span>
+          </div>
+          <select id="instructor-select" class="select">
+            <option value="cb5e99ae-4275-484d-889f-701f44e1c8fe" data-name="Yash" data-email="yash@niat.in">Yash (yash@niat.in)</option>
+            <option value="0ccc9dfe-283e-49cf-a960-f3e0c3ecf404" data-name="Ujjwal" data-email="ujjwal@niat.in">Ujjwal (ujjwal@niat.in)</option>
+            <option value="07814e96-b225-4182-994c-b3f012491b50" data-name="Inderjit" data-email="inderjit@niat.in">Inderjit (inderjit@niat.in)</option>
+            <option value="2509a747-59aa-4cbe-a7b6-5c32e9b6d1db" data-name="Pankaj" data-email="pankaj@niat.in">Pankaj (pankaj@niat.in)</option>
+            <option value="ec6a779c-3671-4288-96cc-1e741cd2a80b" data-name="Divesh" data-email="divesh@niat.in">Divesh (divesh@niat.in)</option>
+            <option value="63e5a750-1d90-4d7b-8962-575c81728f7d" data-name="Rishabh" data-email="rishabh@niat.in">Rishabh (rishabh@niat.in)</option>
+            <option value="ce4faf32-46a2-49c4-9216-132d85315d6d" data-name="Skund" data-email="skund@niat.in">Skund (skund@niat.in)</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="date-input">Date</label>
+            <input type="date" id="date-input" class="input" />
+          </div>
+          <div class="form-group flex-2">
+            <label for="class-select">Class</label>
+            <select id="class-select" class="select">
+              <option value="1">Class 1</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="label-with-hint">
+            <label for="period-select">Period</label>
+            <span class="badge-hint" id="current-period-hint">Active: Period 2</span>
+          </div>
+          <select id="period-select" class="select">
+            <option value="1">Period 1 (09:20 – 10:10 AM)</option>
+            <option value="2" selected>Period 2 (10:10 – 11:00 AM)</option>
+            <option value="3">Period 3 (11:00 – 11:50 AM)</option>
+            <option value="4">Period 4 (11:50 AM – 12:40 PM)</option>
+            <option value="5">Period 5 (01:30 – 02:20 PM)</option>
+            <option value="6">Period 6 (02:20 – 03:10 PM)</option>
+            <option value="7">Period 7 (03:10 – 04:00 PM)</option>
+          </select>
+        </div>
+
+        <!-- Schedule Auto-Sync indicator -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding: 0 2px;">
+          <span style="font-size: 11px; color: #75758a;" id="schedule-status-text">✓ All 7 periods scheduled</span>
+          <button type="button" id="btn-auto-schedule" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 2px 8px; height: 24px;" title="Automatically ensure all 7 periods are scheduled for all classes today">
+            ⚡ Auto-schedule
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="actions">
+        <button id="btn-scrape" class="btn btn-secondary" title="Re-scan the current CCBP page">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+          Re-scrape
+        </button>
+        <button id="btn-submit" class="btn btn-primary" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          Submit Attendance
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: Submission Results -->
+    <div id="step-results" class="step hidden">
+      <div class="results-summary">
+        <div class="result-card success">
+          <span class="result-number" id="result-present">0</span>
+          <span class="result-label">Present</span>
+        </div>
+        <div class="result-card danger">
+          <span class="result-number" id="result-absent">0</span>
+          <span class="result-label">Absent</span>
+        </div>
+        <div class="result-card warning">
+          <span class="result-number" id="result-unmatched">0</span>
+          <span class="result-label">Unmatched</span>
+        </div>
+      </div>
+
+      <!-- Matched list -->
+      <div id="matched-list-wrapper" class="list-wrapper hidden">
+        <h4 class="section-title success-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Matched &amp; Marked Absent
+        </h4>
+        <ul class="result-names" id="matched-names"></ul>
+      </div>
+
+      <!-- Unmatched list -->
+      <div id="unmatched-list-wrapper" class="list-wrapper hidden">
+        <h4 class="section-title warning-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          Could Not Match in Roster
+        </h4>
+        <p class="helper-text">These names did not match active students in Attendease. Please check their spelling or
+          add them manually.</p>
+        <ul class="result-names unmatched" id="unmatched-names"></ul>
+      </div>
+
+      <div class="results-actions">
+        <button id="btn-view-attendease" class="btn btn-secondary btn-full">
+          Open Period in Attendease &rarr;
+        </button>
+        <button id="btn-done" class="btn btn-primary btn-full">
+          Done
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Attendease Sync Extension &bull; v1.1.0</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

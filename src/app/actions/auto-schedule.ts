@@ -2,103 +2,162 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-// BN-14: Import from the canonical shared config instead of re-declaring locally.
-// Previously this file had its own copy of PERIOD_TIMINGS which could silently
-// diverge from the source of truth in period-config.ts.
 import { PERIOD_TIMINGS, ACTIVE_DAYS } from '@/lib/period-config'
 
 /**
- * Ensures 7 period slots exist for a given date and all classes.
- * Skips Sundays. Uses admin client to bypass RLS.
+ * Ensures all 7 period slots exist for a given date across all classes in the database.
+ * If a class already has some periods (e.g., period 2 was created on the fly),
+ * this function detects and fills only the missing periods (1–7) so all classes are fully scheduled.
+ * Skips Sundays unless forceActiveDay is true.
  */
-export async function ensureDailyPeriods(targetDate?: string) {
+export async function ensureDailyPeriods(
+  targetDate?: string,
+  options?: { forceActiveDay?: boolean }
+) {
   const dateStr = targetDate || new Date().toISOString().split('T')[0]
 
   // Check day of week (use UTC to avoid timezone issues)
   const dayOfWeek = new Date(dateStr + 'T00:00:00Z').getUTCDay()
-  if (!ACTIVE_DAYS.includes(dayOfWeek)) {
-    return { skipped: true, reason: 'Not an active day (Sunday)' }
+  if (!options?.forceActiveDay && !ACTIVE_DAYS.includes(dayOfWeek)) {
+    return { skipped: true, reason: 'Not an active day (Sunday)', date: dateStr }
   }
 
   const adminClient = createAdminClient()
 
-  // Fetch all classes
+  // Fetch all active classes
   const { data: classes, error: classErr } = await adminClient
     .from('classes')
-    .select('id')
+    .select('id, class_name')
+    .order('id')
 
   if (classErr || !classes || classes.length === 0) {
     return { error: 'No classes found' }
   }
 
-  // Fetch first admin as default created_by user
+  // Fetch first admin as default created_by user with fallback
+  let creatorId = '0ccc9dfe-283e-49cf-a960-f3e0c3ecf404' // Ujjwal (default admin)
   const { data: defaultAdmin } = await adminClient
     .from('profiles')
     .select('id')
     .eq('role', 'admin')
     .eq('is_active', true)
     .limit(1)
-    .single()
+    .maybeSingle()
 
-  if (!defaultAdmin) {
-    return { error: 'No active admin found to set as created_by' }
+  if (defaultAdmin?.id) {
+    creatorId = defaultAdmin.id
   }
 
-  // BN-12: Single query to get ALL class IDs that already have periods for this
-  // date — replaces the old per-class SELECT count(*) inside a loop
-  // (previously N round-trips, now just 1).
+  // Fetch ALL existing periods for this date
   const { data: existingPeriods, error: existErr } = await adminClient
     .from('periods')
-    .select('class_id')
+    .select('id, class_id, period_number')
     .eq('date', dateStr)
 
   if (existErr) {
     return { error: `Failed to check existing periods: ${existErr.message}` }
   }
 
-  const classesWithPeriods = new Set(
-    (existingPeriods || []).map((p: any) => p.class_id)
-  )
+  // Build a Set of existing "classId_periodNumber" slots for O(1) existence checks
+  const existingSlots = new Set<string>()
+  for (const p of existingPeriods || []) {
+    if (p.period_number != null) {
+      existingSlots.add(`${p.class_id}_${p.period_number}`)
+    }
+  }
+
+  // Build the list of missing periods to insert
+  const periodsToInsert: any[] = []
+
+  for (const cls of classes) {
+    for (const timing of PERIOD_TIMINGS) {
+      const slotKey = `${cls.id}_${timing.period_number}`
+      if (existingSlots.has(slotKey)) {
+        continue
+      }
+
+      periodsToInsert.push({
+        date: dateStr,
+        class_id: cls.id,
+        subject_id: null,
+        instructor_id: null,
+        start_time: timing.start_time,
+        end_time: timing.end_time,
+        period_type: 'Lecture',
+        period_number: timing.period_number,
+        created_by: creatorId,
+      })
+    }
+  }
 
   let totalCreated = 0
 
-  for (const cls of classes) {
-    // Skip classes that already have periods today (O(1) Set lookup)
-    if (classesWithPeriods.has(cls.id)) {
-      continue
-    }
-
-    // Create 7 periods for this class
-    const periods = PERIOD_TIMINGS.map((timing) => ({
-      date: dateStr,
-      class_id: cls.id,
-      subject_id: null,
-      instructor_id: null,
-      start_time: timing.start_time,
-      end_time: timing.end_time,
-      period_type: 'Lecture' as const,
-      period_number: timing.period_number,
-      created_by: defaultAdmin.id,
-    }))
-
+  if (periodsToInsert.length > 0) {
     const { error: insertErr } = await adminClient
       .from('periods')
-      .insert(periods as any)
+      .insert(periodsToInsert)
 
     if (insertErr) {
-      console.error(`Failed to create periods for class ${cls.id} on ${dateStr}:`, insertErr)
+      console.error(`Failed to create periods on ${dateStr}:`, insertErr)
       return { error: `Failed to create periods: ${insertErr.message}` }
     }
 
-    totalCreated += 7
+    totalCreated = periodsToInsert.length
   }
 
   return {
     success: true,
     date: dateStr,
     totalCreated,
-    message: totalCreated > 0
-      ? `Created ${totalCreated} periods for ${dateStr}`
-      : `Periods already exist for ${dateStr}`,
+    totalClasses: classes.length,
+    message:
+      totalCreated > 0
+        ? `Successfully scheduled ${totalCreated} missing period slots for ${classes.length} class(es) on ${dateStr}`
+        : `All ${classes.length} class(es) are already fully scheduled for ${dateStr}`,
   }
 }
+
+/**
+ * Automatically schedules all classes for a range of upcoming days.
+ * E.g., next 7 days or next 30 days. Skips Sundays automatically.
+ */
+export async function ensureDateRangePeriods(
+  startDateStr?: string,
+  daysCount = 7,
+  options?: { forceActiveDay?: boolean }
+) {
+  const start = startDateStr
+    ? new Date(startDateStr + 'T00:00:00Z')
+    : new Date()
+
+  let totalCreatedOverall = 0
+  let daysScheduled = 0
+  const summaryByDate: { date: string; created: number; skipped?: boolean }[] = []
+
+  for (let i = 0; i < daysCount; i++) {
+    const d = new Date(start)
+    d.setUTCDate(start.getUTCDate() + i)
+    const dateStr = d.toISOString().split('T')[0]
+
+    const result = await ensureDailyPeriods(dateStr, options)
+    if (result.success && (result.totalCreated || 0) > 0) {
+      totalCreatedOverall += result.totalCreated || 0
+      daysScheduled++
+      summaryByDate.push({ date: dateStr, created: result.totalCreated || 0 })
+    } else if (result.skipped) {
+      summaryByDate.push({ date: dateStr, created: 0, skipped: true })
+    } else {
+      summaryByDate.push({ date: dateStr, created: 0 })
+    }
+  }
+
+  return {
+    success: true,
+    totalCreated: totalCreatedOverall,
+    daysScheduled,
+    daysCount,
+    summary: summaryByDate,
+    message: `Scheduled ${totalCreatedOverall} period slots across ${daysCount} days`,
+  }
+}
+

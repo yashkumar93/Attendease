@@ -69,7 +69,9 @@ function similarity(a: string, b: string): number {
 
 // ── Normalize ───────────────────────────────────────────────────
 function normalize(s: string): string {
-  return s.toLowerCase().replace(/\s+/g, ' ').trim()
+  let str = s.toLowerCase().replace(/\s+/g, ' ').trim()
+  str = str.replace(/\bathrav\b/g, 'atharv')
+  return str
 }
 
 function escapeRegExp(string: string): string {
