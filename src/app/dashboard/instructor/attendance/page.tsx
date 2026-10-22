@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import Link from 'next/link'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ensureDailyPeriods } from '@/app/actions/auto-schedule'
@@ -22,22 +23,47 @@ interface PeriodSummary {
   attendance: { id: number; status: string; students?: { status: string } | null }[]
 }
 
-export default function InstructorAttendancePage() {
+function InstructorAttendanceContent() {
   const supabase = createClient()
+  const searchParams = useSearchParams()
+  const router = useRouter()
 
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  // Read initial date from URL so that browser back navigation preserves the selected date
+  const urlDate = searchParams.get('date')
+  const initialDate = urlDate || new Date().toISOString().split('T')[0]
+  const [date, setDateState] = useState(initialDate)
   const [selectedClass, setSelectedClass] = useState<number | ''>('')
   const [classes, setClasses] = useState<Class[]>([])
   const [periods, setPeriods] = useState<PeriodSummary[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Keep state in sync if searchParams change (e.g. browser back/forward or back from period page)
   useEffect(() => {
-    supabase.from('classes').select('*').order('id').then(({ data }) => {
+    if (urlDate && urlDate !== date) {
+      setDateState(urlDate)
+    }
+  }, [urlDate, date])
+
+  // Sync date state to URL query param so router.back() restores it
+  const setDate = useCallback((newDate: string) => {
+    setDateState(newDate)
+    const params = new URLSearchParams(searchParams.toString())
+    if (newDate === new Date().toISOString().split('T')[0]) {
+      params.delete('date')
+    } else {
+      params.set('date', newDate)
+    }
+    const qs = params.toString()
+    router.replace(`/dashboard/instructor/attendance${qs ? `?${qs}` : ''}`, { scroll: false })
+  }, [searchParams, router])
+
+  useEffect(() => {
+    supabase.from('classes').select('*').order('id').then(({ data }: any) => {
       if (data) setClasses(data)
     })
   }, [supabase])
 
-  const fetchPeriods = async () => {
+  const fetchPeriods = useCallback(async () => {
     setLoading(true)
     let query = supabase
       .from('periods')
@@ -49,7 +75,9 @@ export default function InstructorAttendancePage() {
     if (selectedClass) query = query.eq('class_id', selectedClass)
 
     let { data } = await query
-    if ((!data || data.length === 0) && date) {
+    // Only auto-generate periods for today or future dates, not past dates
+    const today = new Date().toISOString().split('T')[0]
+    if ((!data || data.length === 0) && date && date >= today) {
       try {
         await ensureDailyPeriods(date)
         const refetch = await query
@@ -61,28 +89,34 @@ export default function InstructorAttendancePage() {
 
     if (data) setPeriods(data as any)
     setLoading(false)
-  }
+  }, [date, selectedClass, supabase])
 
   useEffect(() => {
     fetchPeriods()
-  }, [date, selectedClass])
+  }, [fetchPeriods])
 
-  // Real-time synchronization for overview
+  // Keep ref up to date for stable realtime callback without reconnection loops
+  const fetchPeriodsRef = useRef(fetchPeriods)
+  useEffect(() => {
+    fetchPeriodsRef.current = fetchPeriods
+  }, [fetchPeriods])
+
+  // Real-time synchronization for overview - single stable channel
   useEffect(() => {
     const channel = supabase
       .channel('instructor-attendance-overview')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => {
-        fetchPeriods()
+        fetchPeriodsRef.current()
       })
       .on('broadcast', { event: 'attendance-updated' }, () => {
-        fetchPeriods()
+        fetchPeriodsRef.current()
       })
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [date, selectedClass])
+  }, [supabase])
 
   const getSummary = (attendance: any[]) => {
     const activeAttendance = attendance.filter((a) => a.students?.status !== 'inactive')
@@ -197,7 +231,7 @@ export default function InstructorAttendancePage() {
             const summary = getSummary(period.attendance || [])
             const periodNum = period.period_number ?? (index + 1)
             return (
-              <a
+              <Link
                 key={period.id}
                 href={`/dashboard/attendance/${period.id}`}
                 className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4 hover:bg-surface-soft transition-colors group block"
@@ -275,11 +309,28 @@ export default function InstructorAttendancePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                   </svg>
                 </div>
-              </a>
+              </Link>
             )
           })}
         </div>
       )}
     </div>
+  )
+}
+
+export default function InstructorAttendancePage() {
+  return (
+    <Suspense fallback={
+      <div className="animate-fade-in space-y-6">
+        <div className="h-20 rounded-lg animate-pulse bg-surface-soft/60" />
+        <div className="space-y-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="card p-6 h-20 animate-pulse bg-surface-soft/60" />
+          ))}
+        </div>
+      </div>
+    }>
+      <InstructorAttendanceContent />
+    </Suspense>
   )
 }

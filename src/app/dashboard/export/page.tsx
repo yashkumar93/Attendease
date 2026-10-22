@@ -29,7 +29,7 @@ export default function ExportPage() {
   const [rangePeriodLoading, setRangePeriodLoading] = useState(false)
 
   useEffect(() => {
-    supabase.from('classes').select('*').order('id').then(({ data }) => {
+    supabase.from('classes').select('*').order('id').then(({ data }: any) => {
       if (data) setClasses(data)
     })
     fetchLogs()
@@ -44,7 +44,7 @@ export default function ExportPage() {
         .select('id, start_time, end_time, period_type, period_number, subjects(subject_name), profiles(full_name)')
         .eq('date', date)
         .order('period_number')
-        .then(({ data }) => {
+        .then(({ data }: any) => {
           setAvailablePeriods((data as any[]) || [])
           setPeriodsLoading(false)
         })
@@ -64,7 +64,7 @@ export default function ExportPage() {
         .gte('date', dateFrom)
         .lte('date', dateTo)
         .order('period_number')
-        .then(({ data }) => {
+        .then(({ data }: any) => {
           // Deduplicate by period_number + subject — user picks a slot, not a specific date's period
           const seen = new Set<string>()
           const unique: any[] = []

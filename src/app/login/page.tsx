@@ -26,12 +26,12 @@ function TimeoutNotification() {
   )
 }
 
-export default function LoginPage() {
+function LoginFormContent() {
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
   const supabase = createClient()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -47,14 +47,16 @@ export default function LoginPage() {
 
       if (authError) {
         setError(authError.message)
+        setLoading(false)
         return
       }
 
-      router.push('/dashboard')
-      router.refresh()
+      // Hard navigation guarantees new auth cookies are sent with the request
+      // and eliminates stale client router cache, directly landing on dashboard.
+      const redirectTo = searchParams.get('redirectTo') || '/dashboard'
+      window.location.href = redirectTo
     } catch {
       setError('Unable to sign in. Check your email and password, then try again.')
-    } finally {
       setLoading(false)
     }
   }
@@ -172,5 +174,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-canvas">
+        <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    }>
+      <LoginFormContent />
+    </Suspense>
   )
 }

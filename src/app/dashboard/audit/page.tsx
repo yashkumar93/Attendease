@@ -80,7 +80,7 @@ export default function AuditTrailPage() {
 
   // Initial load classes and audit data
   useEffect(() => {
-    supabase.from('classes').select('*').order('id').then(({ data }) => {
+    supabase.from('classes').select('*').order('id').then(({ data }: any) => {
       if (data) setClasses(data)
     })
   }, [supabase])

@@ -9,12 +9,10 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // Auto-create today's periods if they don't exist yet
-  try {
-    await ensureDailyPeriods()
-  } catch (e) {
+  // Auto-create today's periods if they don't exist yet (fire-and-forget to avoid blocking render)
+  ensureDailyPeriods().catch((e) => {
     console.error('Auto-schedule fallback failed:', e)
-  }
+  })
 
   const { data: profile } = await supabase
     .from('profiles')

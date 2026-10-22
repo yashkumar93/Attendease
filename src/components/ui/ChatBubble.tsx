@@ -12,7 +12,7 @@ export function ChatBubble() {
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }: any) => {
       setIsAuthenticated(!!user)
       if (user) {
         const { data: profile } = await supabase

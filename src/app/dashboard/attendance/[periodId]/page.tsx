@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useEffect, useTransition, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -70,6 +70,7 @@ export default function AttendancePage() {
   const [submitted, setSubmitted] = useState(false)
   const [profileNames, setProfileNames] = useState<Map<string, string>>(new Map())
   const [profileInfo, setProfileInfo] = useState<Map<string, { name: string; role: string }>>(new Map())
+  const profileCacheRef = useRef<Map<string, { name: string; role: string }>>(new Map())
 
   // Single student edit modal
   const [studentEditModal, setStudentEditModal] = useState<{
@@ -88,6 +89,18 @@ export default function AttendancePage() {
   const [periodAuditLogs, setPeriodAuditLogs] = useState<any[]>([])
   const [periodAuditLoading, setPeriodAuditLoading] = useState(false)
 
+  // Navigate back to overview preserving the opened period's date
+  const handleBack = () => {
+    if (period?.date) {
+      const targetPath = userRole === 'instructor'
+        ? `/dashboard/instructor/attendance?date=${period.date}`
+        : `/dashboard/admin/attendance?date=${period.date}`
+      router.push(targetPath)
+    } else {
+      router.back()
+    }
+  }
+
   const fetchAttendanceData = async () => {
     const { data: attendanceData } = await supabase
       .from('attendance')
@@ -105,27 +118,35 @@ export default function AttendancePage() {
       )
       setAbsentIds(absent)
 
-      // Fetch profile names and roles for marked_by and last_modified_by UUIDs
+      // Fetch profile names and roles for marked_by and last_modified_by UUIDs (cached)
       const userIds = new Set<string>()
       for (const record of attendanceData as any[]) {
         if (record.marked_by) userIds.add(record.marked_by)
         if (record.last_modified_by) userIds.add(record.last_modified_by)
       }
-      if (userIds.size > 0) {
+
+      const missingIds = Array.from(userIds).filter((id) => !profileCacheRef.current.has(id))
+      if (missingIds.length > 0) {
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, full_name, role')
-          .in('id', Array.from(userIds))
+          .in('id', missingIds)
         if (profiles) {
-          const nameMap = new Map<string, string>()
-          const infoMap = new Map<string, { name: string; role: string }>()
           for (const p of profiles as any[]) {
-            nameMap.set(p.id, p.full_name)
-            infoMap.set(p.id, { name: p.full_name, role: p.role })
+            profileCacheRef.current.set(p.id, { name: p.full_name, role: p.role })
           }
-          setProfileNames(nameMap)
-          setProfileInfo(infoMap)
         }
+      }
+
+      if (profileCacheRef.current.size > 0) {
+        const nameMap = new Map<string, string>()
+        const infoMap = new Map<string, { name: string; role: string }>()
+        for (const [id, info] of profileCacheRef.current.entries()) {
+          nameMap.set(id, info.name)
+          infoMap.set(id, info)
+        }
+        setProfileNames(nameMap)
+        setProfileInfo(infoMap)
       }
     }
   }
@@ -387,7 +408,7 @@ export default function AttendancePage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <button onClick={() => router.back()} className="btn btn-secondary btn-icon btn-sm" aria-label="Go back">
+              <button onClick={handleBack} className="btn btn-secondary btn-icon btn-sm" aria-label="Go back">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                 </svg>

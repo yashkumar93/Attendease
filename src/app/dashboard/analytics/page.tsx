@@ -34,7 +34,7 @@ export default function AnalyticsPage() {
       .from('classes')
       .select('id, class_name')
       .order('id')
-      .then(({ data: cls }) => {
+      .then(({ data: cls }: any) => {
         if (cls) setClassList(cls)
       })
   }, [supabase])

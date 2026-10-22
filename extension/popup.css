@@ -88,6 +88,7 @@ body::-webkit-scrollbar-thumb {
   letter-spacing: -0.3px;
   background: linear-gradient(135deg, var(--accent-light), #a7f3d0);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
