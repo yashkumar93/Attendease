@@ -90,15 +90,15 @@ export default function AnalyticsPage() {
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-hairline">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-[#0066cc] animate-pulse" />
             <p className="text-xs font-semibold text-muted uppercase tracking-wider">
               Real-time Academic Intelligence
             </p>
           </div>
-          <h1 className="text-[28px] font-bold text-ink tracking-tight leading-tight">
+          <h1 className="text-[28px] font-bold text-ink tracking-tight leading-tight text-balance">
             Attendance Analytics
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-1 max-w-prose text-pretty">
             Comprehensive attendance statistics, daily trends, subject performance, and at-risk student monitoring.
           </p>
         </div>
@@ -118,7 +118,7 @@ export default function AnalyticsPage() {
               <button
                 key={t.id}
                 onClick={() => setTimeRange(t.id)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-150 ease-out ${
                   timeRange === t.id
                     ? 'bg-primary text-white shadow-xs'
                     : 'text-muted hover:text-ink hover:bg-surface'
@@ -133,7 +133,7 @@ export default function AnalyticsPage() {
           <select
             value={classId}
             onChange={(e) => setClassId(e.target.value ? Number(e.target.value) : '')}
-            className="input-select text-xs py-2 px-3 rounded-lg border-hairline bg-surface-elevated text-ink font-medium shadow-xs"
+            className="input-select text-base sm:text-xs py-2 px-3 rounded-lg border-hairline bg-surface-elevated text-ink font-medium shadow-xs"
           >
             <option value="">All Classes</option>
             {classList.map((c) => (
@@ -160,7 +160,7 @@ export default function AnalyticsPage() {
             onChange={(e) => setAiQuestion(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAskAI()}
             placeholder="Ask anything (e.g. 'Who are the most absent students?', 'Show today's summary', 'How is CSE-A doing?')"
-            className="input-text flex-1 text-sm bg-surface-elevated placeholder:text-muted/70"
+            className="input-text flex-1 text-base sm:text-sm bg-surface-elevated placeholder:text-muted/70"
           />
           <button
             onClick={() => handleAskAI()}
@@ -170,7 +170,7 @@ export default function AnalyticsPage() {
             {aiLoading ? (
               <>
                 <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                Analyzing...
+                Analyzing…
               </>
             ) : (
               'Analyze'
@@ -256,7 +256,7 @@ export default function AnalyticsPage() {
             <span
               className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                 (data?.attendanceRate || 0) >= 75
-                  ? 'bg-emerald-500/15 text-emerald-600'
+                  ? 'bg-[#f0f6ff] text-[#0066cc]'
                   : 'bg-amber-500/15 text-amber-600'
               }`}
             >
@@ -264,7 +264,7 @@ export default function AnalyticsPage() {
             </span>
           </div>
           <div className="my-3">
-            <div className="text-3xl font-bold text-ink tracking-tight">
+            <div className="text-3xl font-bold text-ink tracking-tight tabular-nums">
               {loading ? '—' : `${data?.attendanceRate || 0}%`}
             </div>
             <p className="text-xs text-muted mt-1">Average across all marked sessions</p>
@@ -272,7 +272,7 @@ export default function AnalyticsPage() {
           {/* Progress bar */}
           <div className="w-full bg-surface-elevated rounded-full h-2 overflow-hidden border border-hairline">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${
+              className={`h-full rounded-full transition-[width] duration-500 ease-out ${
                 (data?.attendanceRate || 0) >= 75 ? 'bg-primary' : 'bg-accent-amber'
               }`}
               style={{ width: `${Math.min(data?.attendanceRate || 0, 100)}%` }}
@@ -281,24 +281,24 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Total Records */}
-        <div className="card p-5 border-s-4 border-s-emerald-500 flex flex-col justify-between">
+        <div className="card p-5 border-s-4 border-s-[#0066cc] flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted uppercase tracking-wider">
               Total Student Records
             </span>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-surface-elevated text-muted">
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-surface-elevated text-muted tabular-nums">
               {data?.totalPeriods || 0} Periods
             </span>
           </div>
           <div className="my-3">
-            <div className="text-3xl font-bold text-ink tracking-tight">
+            <div className="text-3xl font-bold text-ink tracking-tight tabular-nums">
               {loading ? '—' : data?.totalRecords.toLocaleString() || '0'}
             </div>
             <div className="flex items-center gap-3 mt-1 text-xs">
-              <span className="text-emerald-600 font-medium">
+              <span className="text-[#0066cc] font-medium tabular-nums">
                 ✓ {data?.totalPresent || 0} Present
               </span>
-              <span className="text-rose-600 font-medium">
+              <span className="text-rose-600 font-medium tabular-nums">
                 ✕ {data?.totalAbsent || 0} Absent
               </span>
             </div>
@@ -317,7 +317,7 @@ export default function AnalyticsPage() {
             </span>
           </div>
           <div className="my-3">
-            <div className="text-3xl font-bold text-ink tracking-tight">
+            <div className="text-3xl font-bold text-ink tracking-tight tabular-nums">
               {loading ? '—' : data?.totalActiveStudents || '0'}
             </div>
             <p className="text-xs text-muted mt-1">Students enrolled in scope</p>
@@ -336,7 +336,7 @@ export default function AnalyticsPage() {
             </span>
           </div>
           <div className="my-3">
-            <div className="text-3xl font-bold text-rose-600 tracking-tight">
+            <div className="text-3xl font-bold text-rose-600 tracking-tight tabular-nums">
               {loading ? '—' : data?.atRiskCount || 0}
             </div>
             <p className="text-xs text-muted mt-1">Short of minimum attendance quota</p>
@@ -366,7 +366,7 @@ export default function AnalyticsPage() {
 
           {loading ? (
             <div className="h-48 flex items-center justify-center text-sm text-muted">
-              Loading trends...
+              Loading trends…
             </div>
           ) : !data?.dailyTrend || data.dailyTrend.length === 0 ? (
             <div className="h-48 flex items-center justify-center text-sm text-muted">
@@ -374,34 +374,38 @@ export default function AnalyticsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="h-44 flex items-end gap-2 pt-6">
-                {data.dailyTrend.map((day) => (
-                  <div
-                    key={day.date}
-                    className="flex-1 flex flex-col items-center gap-1 h-full justify-end group relative"
-                  >
-                    {/* Tooltip */}
-                    <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-canvas border border-hairline text-ink text-[11px] px-2 py-1 rounded shadow-md pointer-events-none z-10 whitespace-nowrap">
-                      {day.date}: {day.rate}% ({day.present}P / {day.absent}A)
-                    </div>
+              <div className="overflow-x-auto pb-2 -mx-2 px-2 scroll-px-2">
+                <div className="h-44 flex items-end gap-2 pt-6 min-w-[300px] sm:min-w-0">
+                  {data.dailyTrend.map((day) => (
+                    <div
+                      key={day.date}
+                      className="flex-1 min-w-[32px] sm:min-w-0 flex flex-col items-center gap-1 h-full justify-end group relative cursor-pointer"
+                      tabIndex={0}
+                      aria-label={`${day.date}: ${day.rate}% (${day.present} present, ${day.absent} absent)`}
+                    >
+                      {/* Tooltip (opens on hover and keyboard/touch focus) */}
+                      <div className="absolute -top-10 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity bg-canvas border border-hairline text-ink text-[11px] px-2.5 py-1 rounded-lg shadow-md pointer-events-none z-10 whitespace-nowrap tabular-nums">
+                        {day.date}: {day.rate}% ({day.present}P / {day.absent}A)
+                      </div>
 
-                    {/* Bar container */}
-                    <div className="w-full max-w-[32px] bg-surface-elevated rounded-t flex flex-col-reverse overflow-hidden h-full">
-                      <div
-                        className="w-full bg-primary transition-all duration-300"
-                        style={{ height: `${day.rate}%` }}
-                      />
-                      <div
-                        className="w-full bg-rose-400/80 transition-all duration-300"
-                        style={{ height: `${100 - day.rate}%` }}
-                      />
+                      {/* Bar container */}
+                      <div className="w-full max-w-[32px] bg-surface-elevated rounded-t flex flex-col-reverse overflow-hidden h-full">
+                        <div
+                          className="w-full bg-primary transition-[height] duration-300 ease-out"
+                          style={{ height: `${day.rate}%` }}
+                        />
+                        <div
+                          className="w-full bg-rose-400/80 transition-[height] duration-300 ease-out"
+                          style={{ height: `${100 - day.rate}%` }}
+                        />
+                      </div>
+                      {/* Date label */}
+                      <span className="text-[10px] text-muted truncate max-w-full font-medium tabular-nums">
+                        {day.displayDate}
+                      </span>
                     </div>
-                    {/* Date label */}
-                    <span className="text-[10px] text-muted truncate max-w-full font-medium">
-                      {day.displayDate}
-                    </span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -416,20 +420,20 @@ export default function AnalyticsPage() {
 
           {loading ? (
             <div className="h-48 flex items-center justify-center text-sm text-muted">
-              Loading classes...
+              Loading classes…
             </div>
           ) : !data?.classBreakdown || data.classBreakdown.length === 0 ? (
             <div className="h-48 flex items-center justify-center text-sm text-muted">
               No classes recorded.
             </div>
           ) : (
-            <div className="space-y-3 overflow-y-auto max-h-56 pr-1">
+            <div className="space-y-3 overflow-y-auto max-h-56 pe-1">
               {data.classBreakdown.map((c) => (
                 <div key={c.className} className="space-y-1">
                   <div className="flex items-center justify-between text-xs font-medium">
                     <span className="text-ink truncate">{c.className}</span>
                     <span
-                      className={`font-semibold ${
+                      className={`font-semibold tabular-nums ${
                         c.rate >= 75 ? 'text-primary' : 'text-rose-500'
                       }`}
                     >
@@ -462,27 +466,27 @@ export default function AnalyticsPage() {
 
           {loading ? (
             <div className="h-48 flex items-center justify-center text-sm text-muted">
-              Loading subjects...
+              Loading subjects…
             </div>
           ) : !data?.subjectBreakdown || data.subjectBreakdown.length === 0 ? (
             <div className="h-48 flex items-center justify-center text-sm text-muted">
               No subject data.
             </div>
           ) : (
-            <div className="space-y-3 overflow-y-auto max-h-64 pr-1">
+            <div className="space-y-3 overflow-y-auto max-h-64 pe-1">
               {data.subjectBreakdown.map((s) => (
                 <div
                   key={s.subjectName}
                   className="p-2.5 rounded-lg bg-surface-elevated/60 border border-hairline flex items-center justify-between text-xs"
                 >
-                  <div className="min-w-0 pr-2">
+                  <div className="min-w-0 pe-2">
                     <p className="font-semibold text-ink truncate">{s.subjectName}</p>
-                    <p className="text-[11px] text-muted">
+                    <p className="text-[11px] text-muted tabular-nums">
                       {s.present} Present · {s.absent} Absent
                     </p>
                   </div>
                   <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded ${
+                    className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${
                       s.rate >= 75
                         ? 'bg-primary/10 text-primary'
                         : 'bg-rose-500/10 text-rose-600'
@@ -508,7 +512,7 @@ export default function AnalyticsPage() {
                   {'Below 75% Threshold'}
                 </span>
               </div>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted max-w-prose text-pretty">
                 Students requiring intervention or attendance warning notices
               </p>
             </div>
@@ -516,7 +520,7 @@ export default function AnalyticsPage() {
 
           {loading ? (
             <div className="h-48 flex items-center justify-center text-sm text-muted">
-              Checking records...
+              Checking records…
             </div>
           ) : !data?.atRiskStudents || data.atRiskStudents.length === 0 ? (
             <div className="p-8 text-center bg-surface-elevated/40 rounded-lg border border-hairline">
@@ -524,7 +528,7 @@ export default function AnalyticsPage() {
               <p className="text-sm font-semibold text-ink mt-2">
                 All students meet the 75% attendance threshold!
               </p>
-              <p className="text-xs text-muted mt-1">
+              <p className="text-xs text-muted mt-1 max-w-prose text-pretty">
                 No students currently flagged for chronic absenteeism in this period.
               </p>
             </div>
@@ -545,15 +549,15 @@ export default function AnalyticsPage() {
                   {data.atRiskStudents.map((s) => (
                     <tr key={s.id} className="hover:bg-surface-elevated/40">
                       <td className="p-3 font-semibold text-ink">{s.name}</td>
-                      <td className="p-3 text-muted">{s.rollNumber}</td>
+                      <td className="p-3 text-muted font-mono tabular-nums">{s.rollNumber}</td>
                       <td className="p-3 text-muted">{s.className}</td>
-                      <td className="p-3 text-center text-muted">{s.total}</td>
-                      <td className="p-3 text-center font-semibold text-rose-600">
+                      <td className="p-3 text-center text-muted tabular-nums">{s.total}</td>
+                      <td className="p-3 text-center font-semibold text-rose-600 tabular-nums">
                         {s.absent}
                       </td>
                       <td className="p-3 text-end">
                         <span
-                          className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                          className={`font-bold px-2 py-0.5 rounded text-[11px] tabular-nums ${
                             s.rate < 60
                               ? 'bg-rose-500/15 text-rose-600'
                               : 'bg-amber-500/15 text-amber-600'

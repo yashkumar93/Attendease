@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { Profile } from '@/lib/types/database'
 import { getStaffByEmail } from '@/lib/constants/staff'
 import { createClient } from '@/lib/supabase/client'
@@ -37,6 +37,72 @@ export function ProfileModal({
   const [pwdSuccess, setPwdSuccess] = useState<string | null>(null)
 
   const supabase = createClient()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const previousActiveElementRef = useRef<HTMLElement | null>(null)
+
+  // Focus trap, Escape key handling, and focus restoration
+  useEffect(() => {
+    if (!isOpen) return
+
+    previousActiveElementRef.current = document.activeElement as HTMLElement | null
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const dialogNode = dialogRef.current
+
+    const focusTimer = setTimeout(() => {
+      if (dialogNode) {
+        const focusable = dialogNode.querySelectorAll<HTMLElement>(focusableSelector)
+        if (focusable.length > 0) {
+          focusable[0].focus()
+        }
+      }
+    }, 50)
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+
+      if (e.key === 'Tab') {
+        if (!dialogNode) return
+        const focusable = dialogNode.querySelectorAll<HTMLElement>(focusableSelector)
+        if (focusable.length === 0) {
+          e.preventDefault()
+          return
+        }
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      clearTimeout(focusTimer)
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = originalOverflow
+      if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === 'function') {
+        previousActiveElementRef.current.focus()
+      }
+    }
+  }, [isOpen, onClose])
 
   if (!isOpen) return null
 
@@ -122,26 +188,27 @@ export function ProfileModal({
       setPwdSuccess('Your password has been changed successfully.')
       resetPasswordForm()
       setShowPasswordSection(false)
-    } catch (err: any) {
-      setPwdError(err?.message || 'An unexpected error occurred. Please try again.')
+    } catch (err: unknown) {
+      setPwdError((err as Error)?.message || 'An unexpected error occurred. Please try again.')
     } finally {
       setPwdLoading(false)
     }
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
       <div
-        className="modal-content max-w-lg p-0 overflow-hidden animate-scale-in max-h-[90vh] flex flex-col"
+        ref={dialogRef}
+        className="modal-content max-w-lg p-0 overflow-hidden animate-scale-in max-h-[90dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline bg-surface-soft flex-shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-grove/90 flex items-center justify-center flex-shrink-0 text-white">
+            <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 text-white" style={{background: '#0066cc'}}>
               <AnthropicSpikeMark className="w-3 h-3 text-white" />
             </div>
-            <p className="text-xs font-semibold text-ink uppercase tracking-wider">
+            <p id="profile-modal-title" className="text-xs font-semibold text-ink uppercase tracking-wider">
               Institutional Profile
             </p>
           </div>
@@ -157,7 +224,7 @@ export function ProfileModal({
         </div>
 
         {/* Scrollable Content */}
-        <div className="overflow-y-auto flex-1 divide-y divide-hairline">
+        <div className="overflow-y-auto overscroll-contain flex-1 divide-y divide-hairline">
           {/* Profile Card Intro */}
           <div className="p-6 bg-canvas">
             <div className="flex items-start gap-4">
@@ -166,18 +233,18 @@ export function ProfileModal({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <h2 className="text-xl font-semibold text-ink tracking-tight">
+                  <h2 className="text-xl font-semibold text-ink tracking-tight text-balance">
                     {displayName}
                   </h2>
-                  <span className={`badge ${profile?.role === 'admin' ? 'bg-surface-cream-strong text-ink' : 'bg-grove-pale text-grove border border-grove/20'} text-xs font-medium`}>
+                  <span className={`badge ${profile?.role === 'admin' ? 'bg-surface-cream-strong text-ink' : 'bg-[#f0f6ff] text-[#0066cc] border border-[#0066cc]/20'} text-xs font-medium`}>
                     {displayRole}
                   </span>
                 </div>
-                <p className="text-sm font-medium text-grove mt-1 leading-snug">
+                <p className="text-sm font-medium text-ink mt-1 leading-snug">
                   {displayPost}
                 </p>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="w-2 h-2 rounded-full bg-grove inline-block animate-pulse" />
+                  <span className="w-2 h-2 rounded-full inline-block animate-pulse" style={{background: '#0066cc'}} />
                   <span className="text-xs text-muted">Active institutional status</span>
                 </div>
               </div>
@@ -205,24 +272,36 @@ export function ProfileModal({
                   <button
                     type="button"
                     onClick={handleCopyEmail}
-                    className="btn btn-secondary btn-sm py-0.5 px-2 text-[11px] h-7"
-                    title="Copy email to clipboard"
+                    className="btn btn-secondary btn-sm py-0.5 px-2.5 text-[11px] h-7 relative"
+                    title={copied ? "Email copied to clipboard" : "Copy email to clipboard"}
+                    aria-label={copied ? "Email copied to clipboard" : "Copy email to clipboard"}
                   >
-                    {copied ? (
-                      <span className="text-success-foreground font-medium flex items-center gap-1">
+                    <span className="grid place-items-center">
+                      <span
+                        className={`[grid-area:1/1] flex items-center gap-1 text-success-foreground font-medium transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:scale-100 motion-reduce:blur-[0px] ${
+                          copied
+                            ? 'scale-100 opacity-100 blur-[0px]'
+                            : 'scale-[0.25] opacity-0 blur-[4px] pointer-events-none'
+                        }`}
+                      >
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                         </svg>
                         Copied
                       </span>
-                    ) : (
-                      <span className="flex items-center gap-1">
+                      <span
+                        className={`[grid-area:1/1] flex items-center gap-1 text-ink transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:scale-100 motion-reduce:blur-[0px] ${
+                          copied
+                            ? 'scale-[0.25] opacity-0 blur-[4px] pointer-events-none'
+                            : 'scale-100 opacity-100 blur-[0px]'
+                        }`}
+                      >
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
                         </svg>
                         Copy
                       </span>
-                    )}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -266,8 +345,8 @@ export function ProfileModal({
 
             {/* Global success feedback */}
             {pwdSuccess && !showPasswordSection && (
-              <div className="p-3 rounded-md bg-grove-pale border border-grove/20 text-grove text-xs flex items-center gap-2 animate-fade-in">
-                <svg className="w-4 h-4 text-grove flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <div role="status" aria-live="polite" className="p-3 rounded-md bg-[#f0f6ff] border border-[#0066cc]/20 text-[#0066cc] text-xs flex items-center gap-2 animate-fade-in">
+                <svg className="w-4 h-4 text-[#0066cc] flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>{pwdSuccess}</span>
@@ -282,7 +361,7 @@ export function ProfileModal({
                 </p>
 
                 {pwdError && (
-                  <div className="p-2.5 rounded bg-danger-light border border-danger/20 text-danger-foreground text-xs flex items-start gap-2">
+                  <div role="alert" aria-live="assertive" className="p-2.5 rounded bg-danger-light border border-danger/20 text-danger-foreground text-xs flex items-start gap-2">
                     <svg className="w-3.5 h-3.5 text-danger flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                     </svg>
@@ -292,23 +371,25 @@ export function ProfileModal({
 
                 {/* Current password */}
                 <div>
-                  <label className="block text-xs font-medium text-body-strong mb-1">
+                  <label htmlFor="profile-current-password" className="block text-xs font-medium text-body-strong mb-1">
                     Current password
                   </label>
                   <div className="relative">
                     <input
+                      id="profile-current-password"
                       type={showCurrentPassword ? 'text' : 'password'}
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       placeholder="Enter current password"
                       required
-                      className="input w-full text-xs pe-9 h-8"
+                      className="input w-full text-base sm:text-xs pe-9 h-8"
                     />
                     <button
                       type="button"
                       onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                       className="absolute end-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors p-0.5"
-                      title={showCurrentPassword ? 'Hide password' : 'Show password'}
+                      title={showCurrentPassword ? 'Hide current password' : 'Show current password'}
+                      aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
                     >
                       {showCurrentPassword ? (
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -326,24 +407,26 @@ export function ProfileModal({
 
                 {/* New password */}
                 <div>
-                  <label className="block text-xs font-medium text-body-strong mb-1">
+                  <label htmlFor="profile-new-password" className="block text-xs font-medium text-body-strong mb-1">
                     New password
                   </label>
                   <div className="relative">
                     <input
+                      id="profile-new-password"
                       type={showNewPassword ? 'text' : 'password'}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Minimum 6 characters"
                       required
                       minLength={6}
-                      className="input w-full text-xs pe-9 h-8"
+                      className="input w-full text-base sm:text-xs pe-9 h-8"
                     />
                     <button
                       type="button"
                       onClick={() => setShowNewPassword(!showNewPassword)}
                       className="absolute end-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors p-0.5"
-                      title={showNewPassword ? 'Hide password' : 'Show password'}
+                      title={showNewPassword ? 'Hide new password' : 'Show new password'}
+                      aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
                     >
                       {showNewPassword ? (
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -361,17 +444,18 @@ export function ProfileModal({
 
                 {/* Confirm new password */}
                 <div>
-                  <label className="block text-xs font-medium text-body-strong mb-1">
+                  <label htmlFor="profile-confirm-password" className="block text-xs font-medium text-body-strong mb-1">
                     Confirm new password
                   </label>
                   <input
+                    id="profile-confirm-password"
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter new password"
                     required
                     minLength={6}
-                    className="input w-full text-xs h-8"
+                    className="input w-full text-base sm:text-xs h-8"
                   />
                 </div>
 
@@ -395,7 +479,7 @@ export function ProfileModal({
                     {pwdLoading ? (
                       <>
                         <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Updating...
+                        Updating…
                       </>
                     ) : (
                       'Save password'
@@ -407,7 +491,7 @@ export function ProfileModal({
 
             {/* Inactivity Security Badge */}
             <div className="flex items-center gap-2 p-3 rounded-lg border border-hairline bg-surface-soft text-xs text-muted">
-              <svg className="w-4 h-4 text-grove flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="#0066cc">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span>

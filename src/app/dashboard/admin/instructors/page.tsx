@@ -81,10 +81,10 @@ export default function InstructorsPage() {
           <p className="text-xs font-medium text-muted mb-2">
             Faculty directory
           </p>
-          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight text-balance">
             Instructors
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-1 max-w-prose text-pretty">
             Manage teaching faculty accounts, credentials, and teaching status
           </p>
         </div>
@@ -182,25 +182,25 @@ export default function InstructorsPage() {
       <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add instructor">
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
-            <label className="label">Full Name *</label>
-            <input name="full_name" required className="input" placeholder="e.g. Jane Smith" />
+            <label htmlFor="add-instructor-name" className="label">Full Name *</label>
+            <input id="add-instructor-name" name="full_name" required className="input" placeholder="e.g. Jane Smith" />
           </div>
           <div>
-            <label className="label">Email *</label>
-            <input name="email" type="email" required className="input" placeholder="jane@school.edu" />
+            <label htmlFor="add-instructor-email" className="label">Email *</label>
+            <input id="add-instructor-email" name="email" type="email" required className="input" placeholder="jane@school.edu" />
           </div>
           <div>
-            <label className="label">Password *</label>
-            <input name="password" type="password" required minLength={6} className="input" placeholder="Min 6 characters" />
+            <label htmlFor="add-instructor-pwd" className="label">Password *</label>
+            <input id="add-instructor-pwd" name="password" type="password" required minLength={6} className="input" placeholder="Min 6 characters" />
           </div>
           <div>
-            <label className="label">Contact</label>
-            <input name="contact" className="input" placeholder="e.g. +1 555-0144" />
+            <label htmlFor="add-instructor-contact" className="label">Contact</label>
+            <input id="add-instructor-contact" name="contact" className="input" placeholder="e.g. +1 555-0144" />
           </div>
           <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
             <button type="button" onClick={() => setShowAddModal(false)} className="btn btn-secondary">Cancel</button>
             <button type="submit" disabled={isPending} className="btn btn-primary">
-              {isPending ? 'Saving...' : 'Create instructor'}
+              {isPending ? 'Saving…' : 'Create instructor'}
             </button>
           </div>
         </form>
@@ -211,17 +211,17 @@ export default function InstructorsPage() {
         {editingInstructor && (
           <form onSubmit={handleUpdate} className="space-y-4">
             <div>
-              <label className="label">Full Name *</label>
-              <input name="full_name" defaultValue={editingInstructor.full_name} required className="input" />
+              <label htmlFor="edit-instructor-name" className="label">Full Name *</label>
+              <input id="edit-instructor-name" name="full_name" defaultValue={editingInstructor.full_name} required className="input" />
             </div>
             <div>
-              <label className="label">Contact</label>
-              <input name="contact" defaultValue={editingInstructor.contact || ''} className="input" />
+              <label htmlFor="edit-instructor-contact" className="label">Contact</label>
+              <input id="edit-instructor-contact" name="contact" defaultValue={editingInstructor.contact || ''} className="input" />
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
               <button type="button" onClick={() => setEditingInstructor(null)} className="btn btn-secondary">Cancel</button>
               <button type="submit" disabled={isPending} className="btn btn-primary">
-                {isPending ? 'Saving...' : 'Save changes'}
+                {isPending ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           </form>

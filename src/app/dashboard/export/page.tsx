@@ -238,10 +238,10 @@ export default function ExportPage() {
           <p className="text-xs font-medium text-muted mb-2">
             Data synchronization
           </p>
-          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight text-balance">
             Export attendance
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-1 max-w-prose text-pretty">
             Download attendance archives as CSV or publish live to synchronized Google Sheets
           </p>
         </div>
@@ -258,7 +258,7 @@ export default function ExportPage() {
               <button
                 key={t}
                 onClick={() => setScopeType(t)}
-                className={`px-3.5 py-1.5 rounded-sm text-xs font-medium transition-all ${
+                className={`px-3.5 py-1.5 rounded-sm text-xs font-medium transition-colors duration-150 ease-out ${
                   scopeType === t
                     ? 'bg-canvas text-ink shadow-sm border border-hairline'
                     : 'text-muted hover:text-ink'
@@ -274,8 +274,9 @@ export default function ExportPage() {
             {scopeType === 'single_date' ? (
               <>
                 <div className="w-full sm:w-auto">
-                  <label className="label">Date</label>
+                  <label htmlFor="export-date" className="label">Date</label>
                   <input
+                    id="export-date"
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
@@ -283,8 +284,9 @@ export default function ExportPage() {
                   />
                 </div>
                 <div className="w-full sm:w-auto">
-                  <label className="label">Period (optional)</label>
+                  <label htmlFor="export-period" className="label">Period (optional)</label>
                   <select
+                    id="export-period"
                     value={periodId}
                     onChange={(e) => setPeriodId(e.target.value ? parseInt(e.target.value) : '')}
                     disabled={periodsLoading}
@@ -305,16 +307,17 @@ export default function ExportPage() {
             ) : (
               <>
                 <div className="w-full sm:w-auto">
-                  <label className="label">From</label>
-                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input w-full sm:w-48" />
+                  <label htmlFor="export-date-from" className="label">From</label>
+                  <input id="export-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input w-full sm:w-48" />
                 </div>
                 <div className="w-full sm:w-auto">
-                  <label className="label">To</label>
-                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input w-full sm:w-48" />
+                  <label htmlFor="export-date-to" className="label">To</label>
+                  <input id="export-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="input w-full sm:w-48" />
                 </div>
                 <div className="w-full sm:w-auto">
-                  <label className="label">Period (optional)</label>
+                  <label htmlFor="export-range-period" className="label">Period (optional)</label>
                   <select
+                    id="export-range-period"
                     value={rangePeriodId}
                     onChange={(e) => setRangePeriodId(e.target.value ? parseInt(e.target.value) : '')}
                     disabled={rangePeriodLoading || (!dateFrom || !dateTo)}
@@ -332,7 +335,7 @@ export default function ExportPage() {
                   ) : rangeperiods.length === 0 && !rangePeriodLoading ? (
                     <p className="text-[11px] text-muted mt-1">No periods found in this date range.</p>
                   ) : rangePeriodId ? (
-                    <p className="text-[11px] text-grove mt-1.5 flex items-center gap-1 font-medium">
+                    <p className="text-[11px] text-[#0066cc] mt-1.5 flex items-center gap-1 font-medium">
                       <span>✓</span>
                       <span>Matrix format: Student rows × date columns with Present/Absent counts &amp; % rate.</span>
                     </p>
@@ -343,8 +346,9 @@ export default function ExportPage() {
 
             {classes.length > 1 && (
               <div className="w-full sm:w-auto">
-                <label className="label">Class (optional)</label>
+                <label htmlFor="export-class" className="label">Class (optional)</label>
                 <select
+                  id="export-class"
                   value={classId}
                   onChange={(e) => setClassId(e.target.value ? parseInt(e.target.value) : '')}
                   className="input w-full sm:w-48"
@@ -360,7 +364,7 @@ export default function ExportPage() {
 
           {/* Export buttons */}
           <div className="flex flex-wrap gap-3 pt-2">
-            {/* Primary Coral CTA for Google Sheets */}
+            {/* Primary Action Blue CTA for Google Sheets */}
             <button
               id="export-sheets-btn"
               onClick={handleSheets}
@@ -441,7 +445,7 @@ export default function ExportPage() {
           {/* Bulk export info callout */}
           {((scopeType === 'single_date' && !periodId) || (scopeType === 'date_range' && !rangePeriodId)) && (
             <div className="rounded-lg border border-hairline bg-surface-soft p-4 text-xs text-muted leading-relaxed flex items-start gap-2.5">
-              <svg className="w-4 h-4 text-grove mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="w-4 h-4 text-[#0066cc] mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 012.25-2.25h7.5A2.25 2.25 0 0118 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 004.5 9v.878m13.5-3A2.25 2.25 0 0119.5 9v.878m0 0a2.246 2.246 0 00-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0121 12v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6c0-1.007.662-1.862 1.574-2.147" />
               </svg>
               <div>
@@ -452,7 +456,7 @@ export default function ExportPage() {
 
           {/* Info callout */}
           <div className="rounded-lg border border-hairline bg-surface-soft p-4 text-xs text-muted leading-relaxed flex items-start gap-2.5">
-            <svg className="w-4 h-4 text-grove mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <svg className="w-4 h-4 text-[#0066cc] mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
             </svg>
             <div>
@@ -466,7 +470,7 @@ export default function ExportPage() {
       <div className="card overflow-hidden">
         <div className="px-5 py-3.5 border-b border-hairline flex items-center justify-between bg-surface-soft">
           <h2 className="text-base font-semibold text-ink">Export history</h2>
-          <span className="text-xs text-muted font-mono">{exportLogs.length} recent exports</span>
+          <span className="text-xs text-muted font-mono tabular-nums">{exportLogs.length} recent exports</span>
         </div>
         {logsLoading ? (
           <div className="p-6 space-y-3">
@@ -500,7 +504,7 @@ export default function ExportPage() {
                         <span className="badge badge-pill text-[11px] bg-surface-card border-hairline">CSV</span>
                       )}
                     </td>
-                    <td className="text-xs text-muted font-mono">
+                    <td className="text-xs text-muted font-mono tabular-nums">
                       {new Date(log.exported_at).toLocaleString()}
                     </td>
                     <td>

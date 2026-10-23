@@ -134,10 +134,10 @@ function InstructorAttendanceContent() {
           <p className="text-xs font-medium text-muted mb-2">
             Verification & records
           </p>
-          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight text-balance">
             Attendance overview
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-1 max-w-prose text-pretty">
             View and manage class attendance across all academic periods
           </p>
         </div>
@@ -158,25 +158,27 @@ function InstructorAttendanceContent() {
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <label className="text-xs font-medium text-muted whitespace-nowrap">
+            <label htmlFor="instructor-attendance-date" className="text-xs font-medium text-muted whitespace-nowrap">
               Date:
             </label>
             <input
+              id="instructor-attendance-date"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="input w-full sm:w-44 font-mono text-sm"
+              className="input w-full sm:w-44 font-mono text-base sm:text-sm tabular-nums"
             />
           </div>
           {classes.length > 1 && (
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <label className="text-xs font-medium text-muted whitespace-nowrap">
+              <label htmlFor="instructor-attendance-class" className="text-xs font-medium text-muted whitespace-nowrap">
                 Class:
               </label>
               <select
+                id="instructor-attendance-class"
                 value={selectedClass}
                 onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : '')}
-                className="input w-full sm:w-48 text-sm"
+                className="input w-full sm:w-48 text-base sm:text-sm"
               >
                 <option value="">All classes</option>
                 {classes.map((c) => (
@@ -259,7 +261,7 @@ function InstructorAttendanceContent() {
                         <span>·</span>
                       </>
                     )}
-                    <span className="font-mono">
+                    <span className="font-mono tabular-nums">
                       {period.start_time?.slice(0, 5)} – {period.end_time?.slice(0, 5)}
                     </span>
                     {period.profiles?.full_name && (
@@ -272,7 +274,7 @@ function InstructorAttendanceContent() {
                       {period.period_type}
                     </span>
                     {summary.remarks > 0 && (
-                      <span className="badge badge-pill text-[10px] bg-surface-cream-strong text-ink border border-hairline font-medium">
+                      <span className="badge badge-pill text-[10px] bg-surface-cream-strong text-ink border border-hairline font-medium tabular-nums">
                         💬 {summary.remarks} remark{summary.remarks > 1 ? 's' : ''}
                       </span>
                     )}
@@ -282,13 +284,13 @@ function InstructorAttendanceContent() {
                   {summary.marked ? (
                     <div className="flex items-center gap-4">
                       <div className="text-center min-w-[48px]">
-                        <p className="font-mono text-xl font-medium text-success-foreground">
+                        <p className="font-mono text-xl font-medium text-success-foreground tabular-nums">
                           {summary.present}
                         </p>
                         <p className="text-[10px] text-muted">Present</p>
                       </div>
                       <div className="text-center min-w-[48px]">
-                        <p className="font-mono text-xl font-medium text-danger-foreground">
+                        <p className="font-mono text-xl font-medium text-danger-foreground tabular-nums">
                           {summary.absent}
                         </p>
                         <p className="text-[10px] text-muted">Absent</p>

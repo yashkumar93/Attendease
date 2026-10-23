@@ -65,10 +65,10 @@ export default function SubjectsPage() {
           <p className="text-xs font-medium text-muted mb-2">
             Course catalog
           </p>
-          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight text-balance">
             Subjects
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-1 max-w-prose text-pretty">
             Manage academic subjects available for daily curriculum and period assignment
           </p>
         </div>
@@ -95,10 +95,10 @@ export default function SubjectsPage() {
           </div>
         ) : (
           subjects.map((subject) => (
-            <div key={subject.id} className="card p-5 flex items-center justify-between group hover:border-[#d8d0c5] transition-all">
+            <div key={subject.id} className="card p-5 flex items-center justify-between group hover:border-[#d8d0c5] transition-[border-color] duration-150 ease-out">
               <div className="flex items-center gap-3.5">
-                <div className="w-9 h-9 rounded-md bg-canvas border border-hairline flex items-center justify-center text-grove">
-                  <svg className="w-4 h-4 text-grove" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <div className="w-9 h-9 rounded-md bg-canvas border border-hairline flex items-center justify-center text-[#0066cc]">
+                  <svg className="w-4 h-4 text-[#0066cc]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
                   </svg>
                 </div>
@@ -135,13 +135,13 @@ export default function SubjectsPage() {
       <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add subject">
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
-            <label className="label">Subject Name *</label>
-            <input name="subject_name" required className="input" placeholder="e.g. Data Structures & Algorithms" />
+            <label htmlFor="add-subject-name" className="label">Subject Name *</label>
+            <input id="add-subject-name" name="subject_name" required className="input" placeholder="e.g. Data Structures & Algorithms" />
           </div>
           <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
             <button type="button" onClick={() => setShowAddModal(false)} className="btn btn-secondary">Cancel</button>
             <button type="submit" disabled={isPending} className="btn btn-primary">
-              {isPending ? 'Saving...' : 'Add subject'}
+              {isPending ? 'Saving…' : 'Add subject'}
             </button>
           </div>
         </form>
@@ -152,13 +152,13 @@ export default function SubjectsPage() {
         {editingSubject && (
           <form onSubmit={handleUpdate} className="space-y-4">
             <div>
-              <label className="label">Subject Name *</label>
-              <input name="subject_name" defaultValue={editingSubject.subject_name} required className="input" />
+              <label htmlFor="edit-subject-name" className="label">Subject Name *</label>
+              <input id="edit-subject-name" name="subject_name" defaultValue={editingSubject.subject_name} required className="input" />
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
               <button type="button" onClick={() => setEditingSubject(null)} className="btn btn-secondary">Cancel</button>
               <button type="submit" disabled={isPending} className="btn btn-primary">
-                {isPending ? 'Saving...' : 'Save changes'}
+                {isPending ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           </form>
@@ -171,7 +171,7 @@ export default function SubjectsPage() {
         onClose={() => setDeletingSubject(null)}
         onConfirm={handleDelete}
         title="Delete Subject"
-        message={`Delete "${deletingSubject?.subject_name}"? This will affect any periods assigned to this subject.`}
+        message={`Delete “${deletingSubject?.subject_name}”? This will affect any periods assigned to this subject.`}
         confirmLabel="Delete Subject"
         loading={isPending}
       />

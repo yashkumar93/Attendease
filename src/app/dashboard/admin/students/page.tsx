@@ -130,16 +130,16 @@ export default function StudentsPage() {
   const StudentForm = ({ student, onSubmit }: { student?: Student; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) => (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label className="label">Full Name *</label>
-        <input name="name" defaultValue={student?.name} required className="input" placeholder="e.g. John Doe" />
+        <label htmlFor="student-name" className="label">Full Name *</label>
+        <input id="student-name" name="name" defaultValue={student?.name} required className="input" placeholder="e.g. John Doe" />
       </div>
       <div>
-        <label className="label">Roll Number *</label>
-        <input name="roll_number" defaultValue={student?.roll_number} required className="input font-mono" placeholder="e.g. 2024001" />
+        <label htmlFor="student-roll" className="label">Roll Number *</label>
+        <input id="student-roll" name="roll_number" defaultValue={student?.roll_number} required className="input font-mono" placeholder="e.g. 2024001" />
       </div>
       <div>
-        <label className="label">Class *</label>
-        <select name="class_id" defaultValue={student?.class_id || (classes.length === 1 ? classes[0].id : '')} required className="input">
+        <label htmlFor="student-class" className="label">Class *</label>
+        <select id="student-class" name="class_id" defaultValue={student?.class_id || (classes.length === 1 ? classes[0].id : '')} required className="input">
           {classes.length > 1 && <option value="">Select class</option>}
           {classes.map((c) => (
             <option key={c.id} value={c.id}>{c.class_name}</option>
@@ -147,15 +147,15 @@ export default function StudentsPage() {
         </select>
       </div>
       <div>
-        <label className="label">Contact</label>
-        <input name="contact" defaultValue={student?.contact || ''} className="input" placeholder="e.g. +1 555-0199" />
+        <label htmlFor="student-contact" className="label">Contact</label>
+        <input id="student-contact" name="contact" defaultValue={student?.contact || ''} className="input" placeholder="e.g. +1 555-0199" />
       </div>
       <div className="flex justify-end gap-3 pt-3 border-t border-hairline">
         <button type="button" onClick={() => { setShowAddModal(false); setEditingStudent(null) }} className="btn btn-secondary">
           Cancel
         </button>
         <button type="submit" disabled={isPending} className="btn btn-primary">
-          {isPending ? 'Saving...' : student ? 'Save changes' : 'Add student'}
+          {isPending ? 'Saving…' : student ? 'Save changes' : 'Add student'}
         </button>
       </div>
     </form>
@@ -169,21 +169,21 @@ export default function StudentsPage() {
           <p className="text-xs font-medium text-muted mb-2">
             Student directory
           </p>
-          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight text-balance">
             Students
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-1 max-w-prose text-pretty">
             Manage student enrollment and cohort assignment records
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <button onClick={() => setShowImportModal(true)} className="btn btn-secondary btn-has-leading-icon">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
             </svg>
             Import CSV
           </button>
-          <button onClick={() => setShowAddModal(true)} className="btn btn-primary">
+          <button onClick={() => setShowAddModal(true)} className="btn btn-primary btn-has-leading-icon">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
@@ -270,7 +270,7 @@ export default function StudentsPage() {
               <tbody>
                 {filteredStudents.map((student) => (
                   <tr key={student.id}>
-                    <td className="font-mono text-xs">{student.roll_number}</td>
+                    <td className="font-mono text-xs tabular-nums">{student.roll_number}</td>
                     <td className="font-medium text-ink">{student.name}</td>
                     <td className="text-body">{student.classes?.class_name}</td>
                     <td className="text-muted">{student.contact || '—'}</td>
@@ -363,7 +363,7 @@ export default function StudentsPage() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Importing students...
+              Importing students…
             </div>
           )}
         </div>

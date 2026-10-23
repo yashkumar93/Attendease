@@ -413,7 +413,7 @@ export default function AttendancePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                 </svg>
               </button>
-              <h1 className="text-xl sm:text-2xl font-semibold text-ink tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-semibold text-ink tracking-tight text-balance">
                 {period?.period_number ? `Period ${period.period_number}` : 'Period'}
                 {period?.subjects?.subject_name ? ` · ${period.subjects.subject_name}` : ''}
                 {period?.classes?.class_name ? ` — ${period.classes.class_name}` : ''}
@@ -424,18 +424,18 @@ export default function AttendancePage() {
                 </span>
               )}
               {userRole === 'instructor' && (
-                <span className="badge badge-pill text-[11px] bg-grove-pale text-grove border border-grove/20">
+                <span className="badge badge-pill text-[11px] bg-[#f0f6ff] text-[#0066cc] border border-[#0066cc]/20">
                   Instructor
                 </span>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted ms-8 sm:ms-10">
-              <span className="font-mono">{period?.date}</span>
-              <span className="font-mono">{period?.start_time?.slice(0, 5)} – {period?.end_time?.slice(0, 5)}</span>
+              <span className="font-mono tabular-nums">{period?.date}</span>
+              <span className="font-mono tabular-nums">{period?.start_time?.slice(0, 5)} – {period?.end_time?.slice(0, 5)}</span>
               <span>{period?.profiles?.full_name}</span>
               <span className="badge badge-pill text-[10px]">{period?.period_type}</span>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-grove-pale text-grove border border-grove/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-grove animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#f0f6ff] text-[#0066cc] border border-[#0066cc]/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0066cc] animate-pulse" />
                 Live Sync
               </span>
             </div>
@@ -444,40 +444,43 @@ export default function AttendancePage() {
             <button
               type="button"
               onClick={() => setAttendanceFilter('present')}
-              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+              aria-pressed={attendanceFilter === 'present'}
+              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-colors duration-150 ease-out cursor-pointer ${
                 attendanceFilter === 'present'
-                  ? 'bg-grove-pale/60 border-grove/40 shadow-xs'
+                  ? 'bg-[#f0f6ff] border-[#0066cc]/40'
                   : 'border-transparent hover:bg-surface-soft/60'
               }`}
               title="Click to view present students"
             >
-              <p className="font-mono text-2xl sm:text-3xl font-medium text-success-foreground">{presentCount}</p>
+              <p className="font-mono text-2xl sm:text-3xl font-medium text-success-foreground tabular-nums">{presentCount}</p>
               <p className="text-[10px] font-medium text-muted">Present</p>
             </button>
             <button
               type="button"
               onClick={() => setAttendanceFilter('absent')}
-              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+              aria-pressed={attendanceFilter === 'absent'}
+              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-colors duration-150 ease-out cursor-pointer ${
                 attendanceFilter === 'absent'
                   ? 'bg-danger-light/60 border-danger/40 shadow-xs'
                   : 'border-transparent hover:bg-surface-soft/60'
               }`}
               title="Click to view absent students"
             >
-              <p className="font-mono text-2xl sm:text-3xl font-medium text-danger-foreground">{absentCount}</p>
+              <p className="font-mono text-2xl sm:text-3xl font-medium text-danger-foreground tabular-nums">{absentCount}</p>
               <p className="text-[10px] font-medium text-muted">Absent</p>
             </button>
             <button
               type="button"
               onClick={() => setAttendanceFilter('all')}
-              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+              aria-pressed={attendanceFilter === 'all'}
+              className={`text-center min-w-[58px] px-3 py-1.5 rounded-lg border transition-colors duration-150 ease-out cursor-pointer ${
                 attendanceFilter === 'all'
                   ? 'bg-surface-cream-strong border-hairline shadow-xs'
                   : 'border-transparent hover:bg-surface-soft/60'
               }`}
               title="Click to view all students"
             >
-              <p className="font-mono text-2xl sm:text-3xl font-medium text-ink">{students.length}</p>
+              <p className="font-mono text-2xl sm:text-3xl font-medium text-ink tabular-nums">{students.length}</p>
               <p className="text-[10px] font-medium text-muted">Total</p>
             </button>
           </div>
@@ -521,7 +524,7 @@ export default function AttendancePage() {
       )}
 
       {/* Sticky Action Bar (Tabs + Search + Edit / Submit / Audit) */}
-      <div className="sticky top-14 lg:top-0 z-20 bg-canvas/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-b border-hairline/60 mb-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+      <div className="sticky top-[calc(44px+env(safe-area-inset-top,0px))] lg:top-0 z-20 bg-canvas/95 backdrop-blur-md py-3 px-4 sm:px-6 rounded-2xl border border-hairline/80 mb-6 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between shadow-xs">
         {/* Status Filter Tabs */}
         <div
           role="tablist"
@@ -533,7 +536,7 @@ export default function AttendancePage() {
             role="tab"
             aria-selected={attendanceFilter === 'all'}
             onClick={() => setAttendanceFilter('all')}
-            className={`px-3 py-1.5 rounded-md text-xs transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer ${
               attendanceFilter === 'all'
                 ? 'bg-canvas text-ink shadow-xs font-semibold border border-hairline'
                 : 'text-muted hover:text-ink font-medium'
@@ -554,14 +557,14 @@ export default function AttendancePage() {
             role="tab"
             aria-selected={attendanceFilter === 'present'}
             onClick={() => setAttendanceFilter('present')}
-            className={`px-3 py-1.5 rounded-md text-xs transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer ${
               attendanceFilter === 'present'
-                ? 'bg-grove text-white shadow-xs font-semibold'
+                ? 'bg-[#0066cc] text-white font-semibold'
                 : 'text-muted hover:text-ink font-medium'
             }`}
           >
             <span className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${attendanceFilter === 'present' ? 'bg-emerald-300' : 'bg-grove'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${attendanceFilter === 'present' ? 'bg-white' : 'bg-[#0066cc]'}`} />
               Present
             </span>
             <span
@@ -578,7 +581,7 @@ export default function AttendancePage() {
             role="tab"
             aria-selected={attendanceFilter === 'absent'}
             onClick={() => setAttendanceFilter('absent')}
-            className={`px-3 py-1.5 rounded-md text-xs transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer ${
               attendanceFilter === 'absent'
                 ? 'bg-danger text-white shadow-xs font-semibold'
                 : 'text-muted hover:text-ink font-medium'
@@ -602,7 +605,7 @@ export default function AttendancePage() {
             role="tab"
             aria-selected={attendanceFilter === 'remarks'}
             onClick={() => setAttendanceFilter('remarks')}
-            className={`px-3 py-1.5 rounded-md text-xs transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer ${
               attendanceFilter === 'remarks'
                 ? 'bg-ink text-canvas shadow-xs font-semibold'
                 : 'text-muted hover:text-ink font-medium'
@@ -626,6 +629,7 @@ export default function AttendancePage() {
           <div className="relative flex-1">
             <input
               type="text"
+              aria-label="Search students by name, roll number, or remark"
               placeholder={
                 attendanceFilter === 'all'
                   ? 'Search by name, roll number, or remark…'
@@ -633,13 +637,13 @@ export default function AttendancePage() {
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="input w-full pe-8 text-sm"
+              className="input w-full pe-8 text-base sm:text-sm"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink text-xs p-1"
+                className="absolute end-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink text-xs p-1"
                 aria-label="Clear search"
               >
                 ✕
@@ -651,7 +655,7 @@ export default function AttendancePage() {
             <button
               onClick={handleSubmit}
               disabled={isPending}
-              className="btn btn-primary btn-lg whitespace-nowrap flex-shrink-0"
+              className="btn btn-primary btn-lg btn-has-leading-icon whitespace-nowrap flex-shrink-0"
             >
               {isPending ? (
                 <span className="flex items-center gap-2">
@@ -680,7 +684,7 @@ export default function AttendancePage() {
               </div>
               <button
                 onClick={() => setIsEditing(true)}
-                className="btn btn-primary btn-sm flex items-center gap-1.5"
+                className="btn btn-primary btn-sm btn-has-leading-icon flex items-center gap-1.5"
                 title="Edit all attendance statuses"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -690,20 +694,20 @@ export default function AttendancePage() {
               </button>
               <button
                 onClick={loadPeriodAuditTrail}
-                className="btn btn-secondary btn-sm flex items-center gap-1.5"
+                className="btn btn-secondary btn-sm btn-has-leading-icon flex items-center gap-1.5"
                 title="View period audit history & remarks"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Period audit
               </button>
               <button
                 onClick={handleExportThisPeriod}
-                className="btn btn-secondary btn-sm flex items-center gap-1.5"
+                className="btn btn-secondary btn-sm btn-has-leading-icon flex items-center gap-1.5"
                 title="Export this period's attendance as CSV"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                 </svg>
                 Export CSV
@@ -731,7 +735,7 @@ export default function AttendancePage() {
                   openStudentCorrection(attendanceRecord, 'status')
                 }
               }}
-              className={`attendance-card card p-4 select-none cursor-pointer ${
+              className={`attendance-card card p-4 cursor-pointer ${
                 isAbsent
                   ? 'border-danger/40 bg-danger-light/50 hover:border-danger/60'
                   : 'border-success/20 bg-success-light/30 hover:border-success/40'
@@ -739,20 +743,31 @@ export default function AttendancePage() {
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors duration-150 flex-shrink-0 ${
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (isEditing || !submitted) {
+                        toggleAbsent(student.id)
+                      } else if (submitted && attendanceRecord) {
+                        openStudentCorrection(attendanceRecord, 'status')
+                      }
+                    }}
+                    aria-pressed={!isAbsent}
+                    aria-label={`Mark ${student.name} as ${isAbsent ? 'Present' : 'Absent'}. Currently ${isAbsent ? 'Absent' : 'Present'}`}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors duration-150 flex-shrink-0 select-none cursor-pointer ${
                       isAbsent
-                        ? 'bg-danger/10 text-danger'
-                        : 'bg-success/10 text-success'
+                        ? 'bg-danger/10 text-danger hover:bg-danger/20'
+                        : 'bg-success/10 text-success hover:bg-success/20'
                     }`}
                   >
                     <span key={isAbsent ? 'absent' : 'present'} className="attendance-status-icon">
                       {isAbsent ? '✗' : '✓'}
                     </span>
-                  </div>
+                  </button>
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-foreground">{student.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{student.roll_number}</p>
+                    <p className="text-xs text-muted-foreground font-mono tabular-nums">{student.roll_number}</p>
                     {/* Show who marked/modified this record */}
                     {submitted && attendanceRecord && (
                       <div className="mt-1 space-y-0.5">
@@ -786,12 +801,12 @@ export default function AttendancePage() {
                               e.stopPropagation()
                               openStudentCorrection(attendanceRecord, 'remark')
                             }}
-                            className="text-[11px] text-grove hover:underline font-medium cursor-pointer"
+                            className="text-[11px] text-[#0066cc] hover:underline font-medium cursor-pointer"
                           >
                             Edit remark
                           </button>
                         </div>
-                        <p className="text-xs text-ink font-medium italic leading-relaxed whitespace-pre-wrap break-words">
+                        <p className="text-xs text-ink font-medium italic leading-relaxed whitespace-pre-wrap break-words text-pretty">
                           &ldquo;{attendanceRecord.remark}&rdquo;
                         </p>
                         <div className="flex items-center gap-2 mt-1 text-[10px] text-muted flex-wrap">
@@ -820,7 +835,7 @@ export default function AttendancePage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
+                <div className="flex items-center gap-3 self-end sm:self-center flex-shrink-0">
                   {wasModified && (
                     <span className="text-[10px] text-amber-700 bg-amber-100 dark:bg-amber-950 dark:text-amber-300 px-2 py-0.5 rounded-full font-medium">
                       Edited
@@ -841,42 +856,44 @@ export default function AttendancePage() {
                       }}
                       className="btn btn-secondary btn-sm text-xs py-1 px-2.5 flex items-center gap-1 text-muted hover:text-ink border-dashed"
                       title="Add a remark for this student"
+                      aria-label={`Add a remark for ${student.name}`}
                     >
                       <span className="text-xs">💬</span>
                       <span>+ Remark</span>
                     </button>
                   )}
 
-                  {/* Individual edit button (always accessible once submitted) */}
+                  {/* Individual edit and history controls with proper clearance */}
                   {submitted && attendanceRecord && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openStudentCorrection(attendanceRecord, 'status')
-                      }}
-                      className="btn btn-ghost btn-sm btn-icon text-foreground hover:bg-muted"
-                      title="Edit this student's attendance & reason"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                      </svg>
-                    </button>
-                  )}
+                    <div className="flex items-center gap-1.5 ms-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openStudentCorrection(attendanceRecord, 'status')
+                        }}
+                        className="btn btn-ghost btn-sm btn-icon text-foreground hover:bg-muted p-2"
+                        title="Edit this student's attendance & reason"
+                        aria-label={`Edit attendance for ${student.name}`}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                        </svg>
+                      </button>
 
-                  {/* History button */}
-                  {submitted && attendanceRecord && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        viewHistory(attendanceRecord.id, student.name)
-                      }}
-                      className="btn btn-ghost btn-sm btn-icon text-muted-foreground hover:text-foreground"
-                      title="View student audit history"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          viewHistory(attendanceRecord.id, student.name)
+                        }}
+                        className="btn btn-ghost btn-sm btn-icon text-muted-foreground hover:text-foreground p-2"
+                        title="View student audit history"
+                        aria-label={`View audit history for ${student.name}`}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -978,7 +995,8 @@ export default function AttendancePage() {
                 <button
                   type="button"
                   onClick={() => setStudentEditModal({ ...studentEditModal, targetStatus: 'Present' })}
-                  className={`p-3 rounded-xl border flex items-center justify-center gap-2 transition-all font-semibold ${
+                  aria-pressed={studentEditModal.targetStatus === 'Present'}
+                  className={`p-3 rounded-lg border flex items-center justify-center gap-2 transition-colors duration-150 ease-out font-semibold ${
                     studentEditModal.targetStatus === 'Present'
                       ? 'bg-success/20 border-success text-success ring-2 ring-success/30'
                       : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
@@ -989,7 +1007,8 @@ export default function AttendancePage() {
                 <button
                   type="button"
                   onClick={() => setStudentEditModal({ ...studentEditModal, targetStatus: 'Absent' })}
-                  className={`p-3 rounded-xl border flex items-center justify-center gap-2 transition-all font-semibold ${
+                  aria-pressed={studentEditModal.targetStatus === 'Absent'}
+                  className={`p-3 rounded-lg border flex items-center justify-center gap-2 transition-colors duration-150 ease-out font-semibold ${
                     studentEditModal.targetStatus === 'Absent'
                       ? 'bg-danger/20 border-danger text-danger ring-2 ring-danger/30'
                       : 'bg-muted/30 border-border text-muted-foreground hover:bg-muted'
@@ -1002,14 +1021,15 @@ export default function AttendancePage() {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="label font-medium block">Reason or Remark</label>
+                <label htmlFor="student-remark-input" className="label font-medium block">Reason or Remark</label>
                 <span className="text-[11px] text-muted">Visible to all admins & instructors</span>
               </div>
               <textarea
+                id="student-remark-input"
                 value={studentEditModal.remark}
                 onChange={(e) => setStudentEditModal({ ...studentEditModal, remark: e.target.value })}
                 placeholder="e.g. Medical leave approved, Late arrival, On-duty college event, Marked absent by mistake"
-                className="input min-h-[90px] w-full text-sm"
+                className="input min-h-[90px] w-full text-base sm:text-sm"
                 rows={3}
               />
               {/* Quick suggestion chips */}
@@ -1029,7 +1049,7 @@ export default function AttendancePage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
+              <p className="text-xs text-muted-foreground mt-2 max-w-prose text-pretty">
                 This remark will sync in real-time and be permanently recorded in the audit trail visible across the entire faculty.
               </p>
             </div>
@@ -1113,7 +1133,7 @@ export default function AttendancePage() {
             <button
               onClick={loadPeriodAuditTrail}
               disabled={periodAuditLoading}
-              className="text-xs text-grove hover:underline font-medium cursor-pointer"
+              className="text-xs text-[#0066cc] hover:underline font-medium cursor-pointer"
             >
               Refresh
             </button>

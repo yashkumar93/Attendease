@@ -38,6 +38,17 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
     if (!isPending) inputRef.current?.focus()
   }, [isPending, messages.length])
 
+  // ── Close on Escape key ──
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [onClose])
+
   // ── Idle timeout ──
   const resetIdleTimer = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
@@ -199,7 +210,7 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
   const isInFlow = session && session.step !== 'menu' && session.step !== 'done'
 
   return (
-    <div className="chat-panel">
+    <div className="chat-panel" role="dialog" aria-modal="false" aria-label="AttendEase Assistant">
       {/* Header */}
       <div className="chat-panel-header">
         <div className="flex items-center gap-2.5">
@@ -239,7 +250,7 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
       </div>
 
       {/* Messages */}
-      <div className="chat-panel-messages">
+      <div className="chat-panel-messages overscroll-contain" role="log" aria-live="polite" aria-label="Chat messages">
         {messages.map(msg => (
           <div key={msg.id} className={`chat-message ${msg.role === 'user' ? 'chat-message-user' : 'chat-message-bot'}`}>
             {msg.role === 'bot' && (
@@ -452,6 +463,7 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
         <input
           ref={inputRef}
           type="text"
+          aria-label="Ask assistant or enter message"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

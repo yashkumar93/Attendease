@@ -151,15 +151,15 @@ export default function AuditTrailPage() {
             <span className="text-xs font-semibold text-muted uppercase tracking-wider">
               Governance & Verification
             </span>
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-grove-pale text-grove border border-grove/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-grove animate-pulse" />
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#f0f6ff] text-[#0066cc] border border-[#0066cc]/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0066cc] animate-pulse" />
               Live Sync Active
             </span>
           </div>
-          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight text-balance">
             Audit Trail
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-1 max-w-prose text-pretty">
             Real-time record of remarks, status updates, and attendance logs across all classes and faculty
           </p>
         </div>
@@ -189,22 +189,22 @@ export default function AuditTrailPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div className="card p-4">
           <p className="text-xs font-medium text-muted">Total Events</p>
-          <p className="font-mono text-2xl font-semibold text-ink mt-1">{logs.length}</p>
+          <p className="font-mono text-2xl font-semibold text-ink mt-1 tabular-nums">{logs.length}</p>
           <p className="text-[11px] text-muted mt-0.5">Recorded historical actions</p>
         </div>
         <div className="card p-4">
           <p className="text-xs font-medium text-muted">Remarks Logged</p>
-          <p className="font-mono text-2xl font-semibold text-grove mt-1">{totalRemarks}</p>
+          <p className="font-mono text-2xl font-semibold text-[#0066cc] mt-1 tabular-nums">{totalRemarks}</p>
           <p className="text-[11px] text-muted mt-0.5">With remarks from faculty</p>
         </div>
         <div className="card p-4">
           <p className="text-xs font-medium text-muted">Status Overrides</p>
-          <p className="font-mono text-2xl font-semibold text-danger mt-1">{totalStatusChanges}</p>
+          <p className="font-mono text-2xl font-semibold text-danger mt-1 tabular-nums">{totalStatusChanges}</p>
           <p className="text-[11px] text-muted mt-0.5">Attendance flips recorded</p>
         </div>
         <div className="card p-4">
           <p className="text-xs font-medium text-muted">Active Contributors</p>
-          <p className="font-mono text-2xl font-semibold text-ink mt-1">{uniqueContributors}</p>
+          <p className="font-mono text-2xl font-semibold text-ink mt-1 tabular-nums">{uniqueContributors}</p>
           <p className="text-[11px] text-muted mt-0.5">Admins & instructors</p>
         </div>
       </div>
@@ -223,7 +223,7 @@ export default function AuditTrailPage() {
                   : 'text-muted hover:text-ink'
               }`}
             >
-              All Events ({logs.length})
+              All Events <span className="tabular-nums">({logs.length})</span>
             </button>
             <button
               type="button"
@@ -235,7 +235,7 @@ export default function AuditTrailPage() {
               }`}
             >
               <span>💬</span>
-              <span>Only Remarks ({totalRemarks})</span>
+              <span>Only Remarks <span className="tabular-nums">({totalRemarks})</span></span>
             </button>
             <button
               type="button"
@@ -247,7 +247,7 @@ export default function AuditTrailPage() {
               }`}
             >
               <span>⇄</span>
-              <span>Status Changes ({totalStatusChanges})</span>
+              <span>Status Changes <span className="tabular-nums">({totalStatusChanges})</span></span>
             </button>
           </div>
 
@@ -255,16 +255,17 @@ export default function AuditTrailPage() {
           <div className="relative flex-1 max-w-md">
             <input
               type="text"
+              aria-label="Search by student, roll number, remark, or staff"
               placeholder="Search by student, roll number, remark, or staff…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="input w-full pe-8 text-sm"
+              className="input w-full pe-8 text-base sm:text-sm"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink text-xs p-1"
+                className="absolute end-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink text-xs p-1"
                 aria-label="Clear search"
               >
                 ✕
@@ -276,11 +277,12 @@ export default function AuditTrailPage() {
         {/* Secondary Filter Dropdowns */}
         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-hairline/60">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-muted whitespace-nowrap">Class:</label>
+            <label htmlFor="audit-filter-class" className="text-xs font-medium text-muted whitespace-nowrap">Class:</label>
             <select
+              id="audit-filter-class"
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value ? Number(e.target.value) : '')}
-              className="input text-xs py-1 px-2.5 h-8 min-w-[140px]"
+              className="input text-base sm:text-xs py-1 px-2.5 h-8 min-w-[140px]"
             >
               <option value="">All classes</option>
               {classes.map((c) => (
@@ -292,8 +294,9 @@ export default function AuditTrailPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-muted whitespace-nowrap">Date:</label>
+            <label htmlFor="audit-filter-date" className="text-xs font-medium text-muted whitespace-nowrap">Date:</label>
             <input
+              id="audit-filter-date"
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
@@ -355,7 +358,7 @@ export default function AuditTrailPage() {
             return (
               <div
                 key={log.id}
-                className="card p-4 sm:p-5 transition-all hover:border-hairline/80 hover:shadow-xs space-y-3"
+                className="card p-4 sm:p-5 transition-[border-color,box-shadow] duration-150 ease-out hover:border-hairline/80 hover:shadow-xs space-y-3"
               >
                 {/* Header row: Student info + Period link */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -366,7 +369,7 @@ export default function AuditTrailPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm text-ink">{log.student?.name || 'Unknown Student'}</span>
-                        <span className="font-mono text-xs text-muted">{log.student?.roll_number}</span>
+                        <span className="font-mono text-xs text-muted tabular-nums">{log.student?.roll_number}</span>
                         {log.student?.class_name && (
                           <span className="badge badge-pill text-[10px] bg-surface-soft text-ink font-medium">
                             {log.student.class_name}
@@ -377,7 +380,7 @@ export default function AuditTrailPage() {
                         {log.period?.date}
                         {log.period?.period_number ? ` · Period ${log.period.period_number}` : ''}
                         {log.period?.subject_name ? ` · ${log.period.subject_name}` : ''}
-                        {log.period?.start_time ? ` (${log.period.start_time.slice(0, 5)} - ${log.period.end_time?.slice(0, 5)})` : ''}
+                        {log.period?.start_time ? ` (${log.period.start_time.slice(0, 5)} – ${log.period.end_time?.slice(0, 5)})` : ''}
                       </p>
                     </div>
                   </div>
@@ -423,7 +426,7 @@ export default function AuditTrailPage() {
                       <p className="text-[11px] font-semibold text-ink/75 uppercase tracking-wider mb-0.5">
                         Remark Logged
                       </p>
-                      <p className="text-xs font-medium text-ink italic leading-relaxed whitespace-pre-wrap break-words">
+                      <p className="text-xs font-medium text-ink italic leading-relaxed whitespace-pre-wrap break-words text-pretty">
                         &ldquo;{log.remark}&rdquo;
                       </p>
                     </div>
@@ -447,11 +450,11 @@ export default function AuditTrailPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px]" title={new Date(log.changed_at).toLocaleString()}>
+                    <span className="font-mono text-[11px] tabular-nums" title={new Date(log.changed_at).toLocaleString()}>
                       {formatRelativeTime(log.changed_at)}
                     </span>
                     <span className="text-muted-soft">·</span>
-                    <span className="text-[11px] font-mono hidden sm:inline">
+                    <span className="text-[11px] font-mono tabular-nums hidden sm:inline">
                       {new Date(log.changed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>

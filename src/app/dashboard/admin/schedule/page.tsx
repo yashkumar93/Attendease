@@ -147,10 +147,10 @@ export default function SchedulePage() {
           <p className="text-xs font-medium text-muted mb-2">
             Academic timetable
           </p>
-          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight">
+          <h1 className="text-[28px] font-semibold text-ink tracking-tight leading-tight text-balance">
             Daily schedule
           </h1>
-          <p className="text-muted text-sm mt-1">
+          <p className="text-muted text-sm mt-1 max-w-prose text-pretty">
             Configure periods, timings, and faculty assignments for each day
           </p>
         </div>
@@ -158,13 +158,13 @@ export default function SchedulePage() {
           <button
             onClick={() => setShowAutoScheduleModal(true)}
             disabled={isScheduling || isPending}
-            className="btn btn-secondary inline-flex items-center gap-2 border-emerald-600/30 text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/80 active:bg-emerald-200/80 transition-all font-medium text-sm shadow-xs"
+            className="btn btn-secondary btn-has-leading-icon inline-flex items-center gap-2 border-[#0066cc]/30 text-[#0066cc] bg-[#f0f6ff] hover:bg-[#e0edff] enabled:active:scale-[0.96] transition-[background-color,border-color,transform] duration-150 ease-out font-medium text-sm"
             title="Automatically schedule all classes"
           >
             {isScheduling ? (
-              <span className="w-4 h-4 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin" />
+              <span className="w-4 h-4 border-2 border-[#0066cc] border-t-transparent rounded-full animate-spin" />
             ) : (
-              <svg className="w-4 h-4 text-emerald-700" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg className="w-4 h-4 text-[#0066cc]" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
               </svg>
             )}
@@ -172,7 +172,7 @@ export default function SchedulePage() {
           </button>
           <button
             onClick={() => { setShowAddModal(true); setAddForClass(null) }}
-            className="btn btn-primary"
+            className="btn btn-primary btn-has-leading-icon"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -186,10 +186,11 @@ export default function SchedulePage() {
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-4 items-center">
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <label className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
+            <label htmlFor="schedule-filter-date" className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
               Date:
             </label>
             <input
+              id="schedule-filter-date"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
@@ -198,10 +199,11 @@ export default function SchedulePage() {
           </div>
           {classes.length > 1 && (
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <label className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
+              <label htmlFor="schedule-filter-class" className="text-xs font-medium text-muted uppercase tracking-wider whitespace-nowrap">
                 Class:
               </label>
               <select
+                id="schedule-filter-class"
                 value={selectedClass}
                 onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : '')}
                 className="input w-full sm:w-48"
@@ -215,7 +217,7 @@ export default function SchedulePage() {
           )}
           <div className="flex-1" />
           <div className="text-xs font-medium text-muted self-center">
-            <span className="font-semibold text-ink font-mono">{periods.length}</span> / 7 periods scheduled
+            <span className="font-semibold text-ink font-mono tabular-nums">{periods.length}</span> / 7 periods scheduled
           </div>
         </div>
       </div>
@@ -241,12 +243,12 @@ export default function SchedulePage() {
                     </span>
                   </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted font-mono">
+                      <span className="text-xs text-muted font-mono tabular-nums">
                         {classPeriods.length} / 7 periods
                       </span>
                       {classPeriods.length === 7 ? (
-                        <span className="badge badge-pill text-[11px] bg-emerald-50 text-emerald-700 border-emerald-200 hidden sm:inline-flex items-center gap-1">
-                          <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                        <span className="badge badge-pill text-[11px] bg-[#f0f6ff] text-[#0066cc] border border-[#0066cc]/20 hidden sm:inline-flex items-center gap-1">
+                          <svg className="w-3 h-3 text-[#0066cc]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                           </svg>
                           Fully scheduled
@@ -255,7 +257,7 @@ export default function SchedulePage() {
                         <button
                           onClick={() => handleAutoSchedule('selected')}
                           disabled={isScheduling || isPending}
-                          className="btn btn-secondary btn-sm text-[11px] py-1 px-2.5 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-300"
+                          className="btn btn-secondary btn-sm text-[11px] py-1 px-2.5 text-[#0066cc] bg-[#f0f6ff] hover:bg-[#e0edff] border-[#0066cc]/30"
                           title="Schedule missing periods for all classes"
                         >
                           ⚡ Auto-fill slots
@@ -351,18 +353,18 @@ export default function SchedulePage() {
               type="button"
               onClick={() => handleAutoSchedule('selected')}
               disabled={isScheduling || isPending}
-              className="w-full card p-4 flex items-center justify-between text-start hover:border-emerald-500 hover:bg-emerald-50/40 transition-colors group"
+              className="w-full card p-4 flex items-center justify-between text-start hover:border-[#0066cc]/40 hover:bg-[#f0f6ff]/30 transition-colors group cursor-pointer"
             >
               <div>
-                <p className="text-sm font-semibold text-ink group-hover:text-emerald-900">
+                <p className="text-sm font-semibold text-ink group-hover:text-[#0066cc]">
                   Schedule Selected Date ({date})
                 </p>
                 <p className="text-xs text-muted mt-0.5">
                   Fills all missing slots for all cohorts on the currently selected day.
                 </p>
               </div>
-              <span className="btn btn-secondary btn-sm text-xs font-medium text-emerald-800 border-emerald-300">
-                Run now
+              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-[#0066cc] border border-[#0066cc]/30 bg-[#f0f6ff] group-hover:bg-[#0066cc] group-hover:text-white transition-colors flex-shrink-0 ms-3">
+                Run now →
               </span>
             </button>
 
@@ -370,18 +372,18 @@ export default function SchedulePage() {
               type="button"
               onClick={() => handleAutoSchedule('next7')}
               disabled={isScheduling || isPending}
-              className="w-full card p-4 flex items-center justify-between text-start hover:border-emerald-500 hover:bg-emerald-50/40 transition-colors group"
+              className="w-full card p-4 flex items-center justify-between text-start hover:border-[#0066cc]/40 hover:bg-[#f0f6ff]/30 transition-colors group cursor-pointer"
             >
               <div>
-                <p className="text-sm font-semibold text-ink group-hover:text-emerald-900">
+                <p className="text-sm font-semibold text-ink group-hover:text-[#0066cc]">
                   Pre-Schedule Next 7 Days
                 </p>
                 <p className="text-xs text-muted mt-0.5">
                   Ensures all cohorts are fully scheduled for the upcoming week (skips Sundays).
                 </p>
               </div>
-              <span className="btn btn-secondary btn-sm text-xs font-medium text-emerald-800 border-emerald-300">
-                7 Days
+              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-[#0066cc] border border-[#0066cc]/30 bg-[#f0f6ff] group-hover:bg-[#0066cc] group-hover:text-white transition-colors flex-shrink-0 ms-3">
+                7 Days →
               </span>
             </button>
 
@@ -389,7 +391,7 @@ export default function SchedulePage() {
               type="button"
               onClick={() => handleAutoSchedule('force')}
               disabled={isScheduling || isPending}
-              className="w-full card p-4 flex items-center justify-between text-start hover:border-hairline hover:bg-surface-soft/60 transition-colors group"
+              className="w-full card p-4 flex items-center justify-between text-start hover:border-hairline hover:bg-surface-soft/60 transition-colors group cursor-pointer"
             >
               <div>
                 <p className="text-sm font-medium text-ink">
@@ -399,8 +401,8 @@ export default function SchedulePage() {
                   Overrides Sunday restriction to schedule special weekend sessions.
                 </p>
               </div>
-              <span className="btn btn-secondary btn-sm text-xs">
-                Force
+              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-ink border border-hairline bg-surface-card group-hover:border-ink/30 transition-colors flex-shrink-0 ms-3">
+                Force →
               </span>
             </button>
           </div>
@@ -426,9 +428,9 @@ export default function SchedulePage() {
         <form onSubmit={handleAddPeriod} className="space-y-4">
           {!addForClass && (
             <div>
-              <label className="label">Class *</label>
-              <select name="class_id" required className="input">
-                <option value="">Select class...</option>
+              <label htmlFor="schedule-modal-class" className="label">Class *</label>
+              <select id="schedule-modal-class" name="class_id" required className="input">
+                <option value="">Select class…</option>
                 {classes.map((c) => (
                   <option key={c.id} value={c.id}>{c.class_name}</option>
                 ))}
@@ -437,9 +439,9 @@ export default function SchedulePage() {
           )}
 
           <div>
-            <label className="label">Subject *</label>
-            <select name="subject_id" required className="input">
-              <option value="">Select subject...</option>
+            <label htmlFor="schedule-modal-subject" className="label">Subject *</label>
+            <select id="schedule-modal-subject" name="subject_id" required className="input">
+              <option value="">Select subject…</option>
               {subjects.map((s) => (
                 <option key={s.id} value={s.id}>{s.subject_name}</option>
               ))}
@@ -447,9 +449,9 @@ export default function SchedulePage() {
           </div>
 
           <div>
-            <label className="label">Instructor *</label>
-            <select name="instructor_id" required className="input">
-              <option value="">Select instructor...</option>
+            <label htmlFor="schedule-modal-instructor" className="label">Instructor *</label>
+            <select id="schedule-modal-instructor" name="instructor_id" required className="input">
+              <option value="">Select instructor…</option>
               {instructors.map((ins) => (
                 <option key={ins.id} value={ins.id}>{ins.full_name}</option>
               ))}
@@ -458,18 +460,18 @@ export default function SchedulePage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Start Time *</label>
-              <input type="time" name="start_time" required className="input" defaultValue="09:20" />
+              <label htmlFor="schedule-modal-start-time" className="label">Start Time *</label>
+              <input id="schedule-modal-start-time" type="time" name="start_time" required className="input" defaultValue="09:20" />
             </div>
             <div>
-              <label className="label">End Time *</label>
-              <input type="time" name="end_time" required className="input" defaultValue="10:15" />
+              <label htmlFor="schedule-modal-end-time" className="label">End Time *</label>
+              <input id="schedule-modal-end-time" type="time" name="end_time" required className="input" defaultValue="10:15" />
             </div>
           </div>
 
           <div>
-            <label className="label">Period Type</label>
-            <select name="period_type" defaultValue="Lecture" className="input">
+            <label htmlFor="schedule-modal-type" className="label">Period Type</label>
+            <select id="schedule-modal-type" name="period_type" defaultValue="Lecture" className="input">
               <option value="Lecture">Lecture</option>
               <option value="Lab">Lab</option>
               <option value="Tutorial">Tutorial</option>

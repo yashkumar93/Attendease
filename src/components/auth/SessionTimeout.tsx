@@ -158,6 +158,77 @@ export function SessionTimeout() {
     }
   }, [recordActivity, performLogout, isWarningOpen])
 
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const previousActiveElementRef = useRef<HTMLElement | null>(null)
+
+  // Focus trap, Escape key handling, and focus restoration
+  useEffect(() => {
+    if (!isWarningOpen) return
+
+    previousActiveElementRef.current = document.activeElement as HTMLElement | null
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const focusableSelector = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const dialogNode = dialogRef.current
+
+    // Auto-focus the default button ("Stay signed in")
+    const focusTimer = setTimeout(() => {
+      if (dialogNode) {
+        const focusable = dialogNode.querySelectorAll<HTMLElement>(focusableSelector)
+        // Focus the last button ("Stay signed in" is usually preferred to prevent accidental signout)
+        if (focusable.length > 1) {
+          focusable[focusable.length - 1].focus()
+        } else if (focusable.length > 0) {
+          focusable[0].focus()
+        }
+      }
+    }, 50)
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleStaySignedIn()
+        return
+      }
+
+      if (e.key === 'Tab') {
+        if (!dialogNode) return
+        const focusable = dialogNode.querySelectorAll<HTMLElement>(focusableSelector)
+        if (focusable.length === 0) {
+          e.preventDefault()
+          return
+        }
+
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      clearTimeout(focusTimer)
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = originalOverflow
+      if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === 'function') {
+        previousActiveElementRef.current.focus()
+      }
+    }
+  }, [isWarningOpen, handleStaySignedIn])
+
   if (!isWarningOpen) return null
 
   const minutes = Math.floor(remainingSeconds / 60)
@@ -166,10 +237,12 @@ export function SessionTimeout() {
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="inactivity-dialog-title"
+      aria-describedby="inactivity-dialog-desc"
     >
       <div className="w-full max-w-md bg-canvas border border-hairline rounded-xl shadow-2xl p-6 space-y-4 animate-scale-in text-ink">
         <div className="flex items-center gap-3">
@@ -188,12 +261,12 @@ export function SessionTimeout() {
           </div>
         </div>
 
-        <p className="text-sm text-body leading-relaxed">
+        <p id="inactivity-dialog-desc" className="text-sm text-body leading-relaxed text-pretty">
           You have been inactive for nearly 30 minutes. For institutional security, your session will be automatically terminated in:
         </p>
 
-        <div className="py-3 px-4 rounded-lg bg-surface-soft border border-hairline text-center">
-          <span className="text-2xl font-mono font-bold text-danger tracking-wider">
+        <div className="py-3 px-4 rounded-lg bg-surface-soft border border-hairline text-center" aria-live="polite">
+          <span className="text-2xl font-mono font-bold text-danger tracking-wider tabular-nums">
             {formattedTime}
           </span>
           <p className="text-[11px] text-muted mt-0.5">minutes remaining before sign-out</p>

@@ -1,10 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AttendEase — Attendance Management System",
   description:
     "A streamlined attendance management system for schools and institutes. Set up daily schedules, mark attendance with a fast default-present flow, and export to Google Sheets.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
