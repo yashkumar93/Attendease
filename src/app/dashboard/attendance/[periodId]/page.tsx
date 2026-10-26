@@ -524,138 +524,115 @@ export default function AttendancePage() {
       )}
 
       {/* Sticky Action Bar (Tabs + Search + Edit / Submit / Audit) */}
-      <div className="sticky top-[calc(44px+env(safe-area-inset-top,0px))] lg:top-0 z-20 bg-canvas/95 backdrop-blur-md py-3 px-4 sm:px-6 rounded-2xl border border-hairline/80 mb-6 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between shadow-xs">
-        {/* Status Filter Tabs */}
-        <div
-          role="tablist"
-          aria-label="Filter students by status"
-          className="inline-flex p-1 bg-surface-card border border-hairline rounded-lg self-start sm:self-auto flex-shrink-0"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={attendanceFilter === 'all'}
-            onClick={() => setAttendanceFilter('all')}
-            className={`px-3 py-1.5 rounded-md text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer ${
-              attendanceFilter === 'all'
-                ? 'bg-canvas text-ink shadow-xs font-semibold border border-hairline'
-                : 'text-muted hover:text-ink font-medium'
-            }`}
+      <div className="sticky top-[calc(44px+env(safe-area-inset-top,0px))] lg:top-0 z-20 bg-canvas/95 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-hairline/80 mb-6 shadow-xs flex flex-col gap-3">
+        {/* Top Row: Status Filter Tabs & Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+          {/* Status Filter Tabs */}
+          <div
+            role="tablist"
+            aria-label="Filter students by status"
+            className="inline-flex p-1 bg-surface-card border border-hairline rounded-xl overflow-x-auto max-w-full flex-shrink-0"
           >
-            <span>All</span>
-            <span
-              className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
-                attendanceFilter === 'all' ? 'bg-surface-soft text-ink font-semibold' : 'bg-surface-soft/60 text-muted'
-              }`}
-            >
-              {students.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            role="tab"
-            aria-selected={attendanceFilter === 'present'}
-            onClick={() => setAttendanceFilter('present')}
-            className={`px-3 py-1.5 rounded-md text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer ${
-              attendanceFilter === 'present'
-                ? 'bg-[#0066cc] text-white font-semibold'
-                : 'text-muted hover:text-ink font-medium'
-            }`}
-          >
-            <span className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${attendanceFilter === 'present' ? 'bg-white' : 'bg-[#0066cc]'}`} />
-              Present
-            </span>
-            <span
-              className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
-                attendanceFilter === 'present' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
-              }`}
-            >
-              {presentCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            role="tab"
-            aria-selected={attendanceFilter === 'absent'}
-            onClick={() => setAttendanceFilter('absent')}
-            className={`px-3 py-1.5 rounded-md text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer ${
-              attendanceFilter === 'absent'
-                ? 'bg-danger text-white shadow-xs font-semibold'
-                : 'text-muted hover:text-ink font-medium'
-            }`}
-          >
-            <span className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${attendanceFilter === 'absent' ? 'bg-rose-200' : 'bg-danger'}`} />
-              Absent
-            </span>
-            <span
-              className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
-                attendanceFilter === 'absent' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
-              }`}
-            >
-              {absentCount}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            role="tab"
-            aria-selected={attendanceFilter === 'remarks'}
-            onClick={() => setAttendanceFilter('remarks')}
-            className={`px-3 py-1.5 rounded-md text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer ${
-              attendanceFilter === 'remarks'
-                ? 'bg-ink text-canvas shadow-xs font-semibold'
-                : 'text-muted hover:text-ink font-medium'
-            }`}
-          >
-            <span className="flex items-center gap-1.5">
-              <span className="text-xs">💬</span>
-              Remarks
-            </span>
-            <span
-              className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
-                attendanceFilter === 'remarks' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
-              }`}
-            >
-              {remarkCount}
-            </span>
-          </button>
-        </div>
-
-        <div className="flex-1 flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              aria-label="Search students by name, roll number, or remark"
-              placeholder={
+            <button
+              type="button"
+              role="tab"
+              aria-selected={attendanceFilter === 'all'}
+              onClick={() => setAttendanceFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                 attendanceFilter === 'all'
-                  ? 'Search by name, roll number, or remark…'
-                  : `Search within ${attendanceFilter} students…`
-              }
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input w-full pe-8 text-base sm:text-sm"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute end-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink text-xs p-1"
-                aria-label="Clear search"
+                  ? 'bg-canvas text-ink shadow-xs font-semibold border border-hairline'
+                  : 'text-muted hover:text-ink font-medium'
+              }`}
+            >
+              <span>All</span>
+              <span
+                className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
+                  attendanceFilter === 'all' ? 'bg-surface-soft text-ink font-semibold' : 'bg-surface-soft/60 text-muted'
+                }`}
               >
-                ✕
-              </button>
-            )}
+                {students.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={attendanceFilter === 'present'}
+              onClick={() => setAttendanceFilter('present')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                attendanceFilter === 'present'
+                  ? 'bg-[#0066cc] text-white font-semibold'
+                  : 'text-muted hover:text-ink font-medium'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${attendanceFilter === 'present' ? 'bg-white' : 'bg-[#0066cc]'}`} />
+                Present
+              </span>
+              <span
+                className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
+                  attendanceFilter === 'present' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
+                }`}
+              >
+                {presentCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={attendanceFilter === 'absent'}
+              onClick={() => setAttendanceFilter('absent')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                attendanceFilter === 'absent'
+                  ? 'bg-danger text-white shadow-xs font-semibold'
+                  : 'text-muted hover:text-ink font-medium'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${attendanceFilter === 'absent' ? 'bg-rose-200' : 'bg-danger'}`} />
+                Absent
+              </span>
+              <span
+                className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
+                  attendanceFilter === 'absent' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
+                }`}
+              >
+                {absentCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={attendanceFilter === 'remarks'}
+              onClick={() => setAttendanceFilter('remarks')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition-colors duration-150 ease-out flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                attendanceFilter === 'remarks'
+                  ? 'bg-ink text-canvas shadow-xs font-semibold'
+                  : 'text-muted hover:text-ink font-medium'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="text-xs">💬</span>
+                Remarks
+              </span>
+              <span
+                className={`font-mono text-[11px] px-1.5 py-0.5 rounded ${
+                  attendanceFilter === 'remarks' ? 'bg-white/20 text-white font-semibold' : 'bg-surface-soft/60 text-muted'
+                }`}
+              >
+                {remarkCount}
+              </span>
+            </button>
           </div>
 
+          {/* Action Buttons */}
           {!submitted ? (
             <button
               onClick={handleSubmit}
               disabled={isPending}
-              className="btn btn-primary btn-lg btn-has-leading-icon whitespace-nowrap flex-shrink-0"
+              className="btn btn-primary btn-sm btn-has-leading-icon whitespace-nowrap flex-shrink-0"
             >
               {isPending ? (
                 <span className="flex items-center gap-2">
@@ -675,16 +652,16 @@ export default function AttendancePage() {
               )}
             </button>
           ) : !isEditing ? (
-            <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
-              <div className="flex items-center gap-1.5 text-xs text-success-foreground font-medium px-3 py-1.5 bg-success-light border border-success/30 rounded-md">
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <div className="flex items-center gap-2 flex-wrap sm:justify-end flex-shrink-0">
+              <div className="flex items-center gap-1.5 text-xs text-success-foreground font-medium px-2.5 py-1.5 bg-success-light border border-success/30 rounded-lg whitespace-nowrap">
+                <svg className="w-4 h-4 flex-shrink-0 text-success" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Submitted
               </div>
               <button
                 onClick={() => setIsEditing(true)}
-                className="btn btn-primary btn-sm btn-has-leading-icon flex items-center gap-1.5"
+                className="btn btn-primary btn-sm btn-has-leading-icon flex items-center gap-1.5 whitespace-nowrap"
                 title="Edit all attendance statuses"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -694,7 +671,7 @@ export default function AttendancePage() {
               </button>
               <button
                 onClick={loadPeriodAuditTrail}
-                className="btn btn-secondary btn-sm btn-has-leading-icon flex items-center gap-1.5"
+                className="btn btn-secondary btn-sm btn-has-leading-icon flex items-center gap-1.5 whitespace-nowrap"
                 title="View period audit history & remarks"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -704,7 +681,7 @@ export default function AttendancePage() {
               </button>
               <button
                 onClick={handleExportThisPeriod}
-                className="btn btn-secondary btn-sm btn-has-leading-icon flex items-center gap-1.5"
+                className="btn btn-secondary btn-sm btn-has-leading-icon flex items-center gap-1.5 whitespace-nowrap"
                 title="Export this period's attendance as CSV"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -713,7 +690,55 @@ export default function AttendancePage() {
                 Export CSV
               </button>
             </div>
-          ) : null}
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-warning-foreground bg-warning-light border border-warning/30 px-2.5 py-1 rounded-lg">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-amber animate-pulse" />
+                Batch editing
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Row: Full-width Search Input */}
+        <div className="relative w-full">
+          <div className="absolute start-4 top-1/2 -translate-y-1/2 pointer-events-none text-muted flex items-center justify-center z-10">
+            <svg className="w-4 h-4 text-muted" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+          </div>
+          <input
+            type="text"
+            aria-label="Search students by name, roll number, or remark"
+            placeholder={
+              attendanceFilter === 'all'
+                ? 'Search students by name, roll number, or remark…'
+                : `Search within ${attendanceFilter} students…`
+            }
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ paddingLeft: '44px', paddingRight: searchQuery ? '96px' : '40px' }}
+            className="input input-search w-full text-sm h-11"
+          />
+          <div className="absolute end-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-10">
+            {searchQuery && (
+              <>
+                <span className="text-[11px] font-mono text-muted tabular-nums hidden sm:inline">
+                  {filteredStudents.length} match{filteredStudents.length === 1 ? '' : 'es'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-muted hover:text-ink text-xs p-1 rounded-full hover:bg-surface-soft transition-colors cursor-pointer"
+                  aria-label="Clear search"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

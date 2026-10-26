@@ -218,7 +218,7 @@ export function ChatPanel({ onClose, userRole }: { onClose: () => void; userRole
             <AnthropicSpikeMark className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-on-dark tracking-tight">AttendEase Assistant</h3>
+            <h3 className="text-sm font-semibold text-white tracking-tight">AttendEase Assistant</h3>
             <p className="text-[11px] text-on-dark-soft">
               {session?.step === 'ask_absentees' || session?.step === 'update_loop'
                 ? `Marking ${session.periodLabel || 'attendance'}`
